@@ -61,7 +61,7 @@ def _read_text_with_fallback(file_path: str) -> str:
 class FileParser:
     """文件解析器"""
     
-    SUPPORTED_EXTENSIONS = {'.pdf', '.md', '.markdown', '.txt'}
+    SUPPORTED_EXTENSIONS = {'.pdf', '.md', '.markdown', '.txt', '.docx'}
     
     @classmethod
     def is_supported(cls, file_path: str) -> bool:
@@ -104,7 +104,9 @@ class FileParser:
             return cls._extract_from_md(file_path)
         elif suffix == '.txt':
             return cls._extract_from_txt(file_path)
-        
+        elif suffix == '.docx':
+            return cls._extract_from_docx(file_path)
+
         raise ValueError(f"无法处理的文件格式: {suffix}")
     
     @staticmethod
@@ -133,6 +135,13 @@ class FileParser:
     def _extract_from_txt(file_path: str) -> str:
         """从TXT提取文本，支持自动编码检测"""
         return _read_text_with_fallback(file_path)
+
+    @staticmethod
+    def _extract_from_docx(file_path: str) -> str:
+        """从DOCX提取文本：通过 markitdown 转换为 Markdown 后入库"""
+        # 延迟导入，避免 markitdown 在应用启动时被加载
+        from .file_converter import convert_to_markdown
+        return convert_to_markdown(file_path)
     
     @classmethod
     def extract_from_multiple(cls, file_paths: List[str]) -> str:
