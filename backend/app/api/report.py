@@ -3,6 +3,7 @@ Report API路由
 提供模拟报告生成、获取、对话等接口
 """
 
+import io
 import os
 import traceback
 import threading
@@ -16,6 +17,7 @@ from ..models.project import ProjectManager
 from ..models.task import TaskManager, TaskStatus
 from ..utils.logger import get_logger
 from ..utils.locale import t, get_locale, set_locale
+from ..utils.report_download import render_report_download
 
 logger = get_logger('mirofish.api.report')
 
@@ -398,40 +400,30 @@ def list_reports():
 @report_bp.route('/<report_id>/download', methods=['GET'])
 def download_report(report_id: str):
     """
-    下载报告（Markdown格式）
-    
-    返回Markdown文件
+    下载报告（Markdown 或 Word）
+
+    Query:
+        format: 'md'（默认）或 'docx'
     """
     try:
         report = ReportManager.get_report(report_id)
-        
+
         if not report:
             return jsonify({
                 "success": False,
                 "error": t('api.reportNotFound', id=report_id)
             }), 404
-        
-        md_path = ReportManager._get_report_markdown_path(report_id)
-        
-        if not os.path.exists(md_path):
-            # 如果MD文件不存在，生成一个临时文件
-            import tempfile
-            with tempfile.NamedTemporaryFile(mode='w', suffix='.md', delete=False) as f:
-                f.write(report.markdown_content)
-                temp_path = f.name
-            
-            return send_file(
-                temp_path,
-                as_attachment=True,
-                download_name=f"{report_id}.md"
-            )
-        
+
+        fmt = request.args.get('format', 'md')
+        data, download_name, mimetype = render_report_download(report, fmt)
+
         return send_file(
-            md_path,
+            io.BytesIO(data),
             as_attachment=True,
-            download_name=f"{report_id}.md"
+            download_name=download_name,
+            mimetype=mimetype,
         )
-        
+
     except Exception as e:
         logger.error(f"下载报告失败: {str(e)}")
         return jsonify({
