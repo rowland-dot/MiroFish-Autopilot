@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>File Conversion & Export — states</title>
+<style>
+  /* Tokens lifted from ReportView.vue / Step4Report.vue / Home.vue (see 00-storyboard.md) */
+  :root{
+    --surface:#FFF; --border:#EAEAEA; --card-border:#E5E7EB; --hair:#F3F4F6;
+    --ink:#000; --muted:#666; --faint:#999; --bg:#F5F5F5;
+    --accent:#FF5722; --proc:#FF9800; --done:#4CAF50;
+    --sans:'Space Grotesk','Noto Sans SC',system-ui,sans-serif;
+    --mono:'JetBrains Mono',ui-monospace,monospace;
+    --new:#1A936F; --chg:#C2410C;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:#E9E9E6;font-family:var(--sans);color:var(--ink);padding:28px;}
+  .doc-title{font-family:var(--mono);font-weight:800;font-size:15px;letter-spacing:.04em;margin:0 0 4px;}
+  .doc-sub{color:#555;font-size:12.5px;margin:0 0 22px;}
+  .state-cap{display:flex;align-items:center;gap:10px;margin:26px 0 8px;font-size:12px;color:#444;}
+  .state-cap .slug{font-family:var(--mono);background:#111;color:#fff;padding:3px 9px;border-radius:5px;font-size:11px;}
+  .state-cap .tierA{background:#EAF6F0;color:var(--new);font-weight:700;padding:3px 9px;border-radius:5px;font-size:11px;}
+  .state-cap .desc{color:#666;}
+  .badge{font-size:9.5px;font-weight:800;letter-spacing:.06em;padding:2px 6px;border-radius:4px;color:#fff;vertical-align:middle;}
+  .badge.new{background:var(--new);} .badge.chg{background:var(--chg);}
+  .ring-new{outline:2px dashed var(--new);outline-offset:3px;border-radius:8px;}
+  .ring-chg{outline:2px dashed var(--chg);outline-offset:3px;border-radius:6px;}
+
+  /* ---- full app shell ---- */
+  .screen{background:var(--surface);border:1px solid #d9d9d6;border-radius:12px;overflow:hidden;box-shadow:0 2px 10px rgba(0,0,0,.06);height:560px;display:flex;flex-direction:column;}
+  .app-header{height:60px;flex:none;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;padding:0 24px;background:var(--surface);}
+  .brand{font-family:var(--mono);font-weight:800;font-size:18px;letter-spacing:1px;}
+  .view-switcher{display:flex;background:var(--bg);padding:4px;border-radius:6px;gap:4px;}
+  .switch-btn{border:none;background:transparent;padding:6px 16px;font:600 12px var(--sans);color:var(--muted);border-radius:4px;cursor:pointer;}
+  .switch-btn.active{background:#fff;color:#000;box-shadow:0 2px 4px rgba(0,0,0,.05);}
+  .header-right{display:flex;align-items:center;gap:16px;}
+  .lang{font:600 12px var(--sans);color:#888;}
+  .step-divider{width:1px;height:14px;background:#E0E0E0;}
+  .workflow-step{display:flex;align-items:center;gap:8px;font-size:14px;}
+  .step-num{font-family:var(--mono);font-weight:700;color:var(--faint);}
+  .step-name{font-weight:700;}
+  .status-indicator{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted);font-weight:500;}
+  .status-indicator .dot{width:8px;height:8px;border-radius:50%;background:var(--done);}
+  .content-area{flex:1;overflow:auto;}
+
+  /* ---- report panel ---- */
+  .report-content-wrapper{max-width:760px;margin:0 auto;padding:34px 40px;}
+  .report-header-block{position:relative;}
+  .rh-top{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;}
+  .report-meta{display:flex;gap:10px;align-items:center;}
+  .report-tag{background:#111;color:#fff;font-size:11px;font-weight:700;padding:4px 10px;border-radius:5px;letter-spacing:.04em;}
+  .report-id{font-family:var(--mono);font-size:11.5px;color:var(--muted);}
+  .main-title{font-size:25px;line-height:1.25;margin:18px 0 8px;letter-spacing:-.02em;}
+  .sub-title{color:var(--muted);font-size:13.5px;line-height:1.65;margin:0;}
+  .header-divider{height:1px;background:var(--card-border);margin:20px 0 0;}
+  .sections-list{margin-top:22px;display:flex;flex-direction:column;gap:14px;}
+  .report-section-item{border:1px solid var(--hair);border-radius:10px;padding:14px 16px;}
+  .section-header-row{display:flex;align-items:center;gap:12px;}
+  .section-number{font-family:var(--mono);font-size:12px;color:#bbb;font-weight:700;}
+  .section-title{font-size:14px;margin:0;font-weight:700;}
+  .sec-line{height:8px;background:#EEF0F2;border-radius:5px;margin-top:10px;}
+
+  /* ---- NEW download control (styled from primary-button + card tokens) ---- */
+  .report-download{position:relative;flex:none;}
+  .report-download__btn{display:inline-flex;align-items:center;gap:8px;background:#111;color:#fff;border:none;border-radius:8px;padding:9px 14px;font:600 12.5px var(--sans);cursor:pointer;}
+  .report-download__btn .caret{font-size:9px;opacity:.85;}
+  .report-download__btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
+  .report-download__menu{position:absolute;top:calc(100% + 8px);right:0;background:#fff;border:1px solid var(--card-border);border-radius:10px;box-shadow:0 10px 28px rgba(0,0,0,.14);width:212px;overflow:hidden;z-index:5;}
+  .report-download__item{display:flex;align-items:center;gap:11px;padding:11px 14px;font-size:13px;cursor:pointer;border-bottom:1px solid var(--hair);background:#fff;border:0;border-bottom:1px solid var(--hair);width:100%;text-align:left;}
+  .report-download__item:last-child{border-bottom:none;}
+  .report-download__item:hover{background:#FAFAFA;}
+  .report-download__item:focus-visible{background:#FFF4EF;outline:2px solid var(--accent);outline-offset:-2px;}
+  .dl-ic{width:26px;height:26px;border-radius:6px;display:flex;align-items:center;justify-content:center;font:800 11px var(--sans);color:#fff;flex:none;}
+  .dl-ic.docx{background:#2B579A;} .dl-ic.md{background:#111;}
+  .dl-t{font-weight:600;} .dl-s{display:block;font-size:11px;color:var(--muted);font-weight:400;}
+
+  /* ---- upload console (Home.vue) ---- */
+  .home-body{max-width:520px;margin:0 auto;padding:40px;}
+  .console-box{border:1px solid var(--card-border);border-radius:12px;padding:18px;background:#fff;}
+  .console-header{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:14px;}
+  .console-label{font-size:13px;font-weight:700;}
+  .console-meta{font-family:var(--mono);font-size:11.5px;color:var(--muted);}
+  .upload-zone{border:1.5px dashed #D1D5DB;border-radius:10px;padding:22px;text-align:center;background:#FAFAFA;}
+  .upload-icon{font-size:22px;color:var(--faint);}
+  .upload-title{font-size:13.5px;font-weight:600;margin-top:8px;}
+  .upload-hint{font-size:12px;color:var(--muted);margin-top:3px;}
+  .file-list{margin-top:14px;display:flex;flex-direction:column;gap:8px;text-align:left;}
+  .file-item{display:flex;align-items:center;gap:10px;border:1px solid var(--card-border);border-radius:8px;padding:9px 12px;font-size:12.5px;}
+  .ftag{font-size:9.5px;font-weight:800;color:#fff;border-radius:4px;padding:2px 6px;flex:none;}
+  .ftag.docx{background:#2B579A;} .ftag.pdf{background:#C2283B;} .ftag.md{background:#111;}
+  .fname{font-family:var(--mono);font-size:12px;}
+  .fsize{margin-left:auto;color:var(--faint);font-size:11px;font-family:var(--mono);}
+  .anno{margin:10px 2px 0;font-size:12.5px;color:#374151;border-left:3px solid var(--card-border);padding-left:12px;}
+  .anno.new{border-color:var(--new);} .anno.chg{border-color:var(--chg);}
+</style>
+</head>
+<body>
+<!--
+| State slug                  | Tier | Entry-point state        | What it shows |
+|-----------------------------|------|--------------------------|---------------|
+| report-complete-resting     | A    | none                     | Report page, complete; NEW Download button at rest in the header, menu closed. |
+| report-download-menu-open   | A    | report-complete-resting  | Download menu open: Word (.docx) + Markdown (.md). |
+| upload-docx-accepted        | A    | none                     | Upload console: formats now PDF/DOCX/MD/TXT; a .docx file accepted in the list. |
+-->
+
+<p class="doc-title">FILE CONVERSION & EXPORT — MOCKUP</p>
+<p class="doc-sub">Faithful to the live components. <span class="badge new">NEW</span> brand-new · <span class="badge chg">CHANGED</span> modified existing. Nothing implemented yet.</p>
+
+<!-- ───────── STATE 1 ───────── -->
+<div class="state-cap"><span class="slug">report-complete-resting</span><span class="tierA">TIER A</span><span class="desc">report page · download button at rest</span></div>
+<section class="screen"
+         data-mockup-state="report-complete-resting"
+         data-mockup-tier="A"
+         data-mockup-entry-point="none"
+         data-mockup-capture="[data-testid='report-download']"
+         data-mockup-trigger='[]'>
+  <header class="app-header">
+    <div class="brand">MIROFISH</div>
+    <div class="view-switcher">
+      <button class="switch-btn">Graph</button>
+      <button class="switch-btn">Split</button>
+      <button class="switch-btn active">Workbench</button>
+    </div>
+    <div class="header-right">
+      <span class="lang">EN</span><span class="step-divider"></span>
+      <div class="workflow-step"><span class="step-num">Step 4/5</span><span class="step-name">Report</span></div>
+      <span class="step-divider"></span>
+      <span class="status-indicator"><span class="dot"></span>Completed</span>
+    </div>
+  </header>
+  <div class="content-area">
+    <div class="report-content-wrapper">
+      <div class="report-header-block">
+        <div class="rh-top">
+          <div class="report-meta">
+            <span class="report-tag">Prediction Report</span>
+            <span class="report-id">ID: report_ba69ab074c2e</span>
+          </div>
+          <!-- NEW download control -->
+          <div class="report-download ring-new" data-testid="report-download">
+            <button class="report-download__btn" data-testid="report-download-btn"
+                    aria-haspopup="menu" aria-expanded="false">⬇ Download <span class="caret">▼</span></button>
+          </div>
+        </div>
+        <h1 class="main-title">Tropical Oasis 天猫国际官旗详情页预测报告</h1>
+        <p class="sub-title">基于群体模拟预测，从天猫平台与中国电商消费者视角分析该详情页能带来的销售结果预期与改进建议…</p>
+        <div class="header-divider"></div>
+      </div>
+      <div class="sections-list">
+        <div class="report-section-item"><div class="section-header-row"><span class="section-number">01</span><h3 class="section-title">舆论焦点预测与核心人群画像</h3></div><div class="sec-line" style="width:70%"></div></div>
+        <div class="report-section-item"><div class="section-header-row"><span class="section-number">02</span><h3 class="section-title">产品差异化卖点的传播效果</h3></div><div class="sec-line" style="width:55%"></div></div>
+      </div>
+      <p class="anno new"><span class="badge new">NEW</span> Download button sits at the report header's top-right, only after the report is complete (gated on <code>isComplete</code>). At rest the menu is closed.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ───────── STATE 2 ───────── -->
+<div class="state-cap"><span class="slug">report-download-menu-open</span><span class="tierA">TIER A</span><span class="desc">click Download → format menu</span></div>
+<section class="screen"
+         data-mockup-state="report-download-menu-open"
+         data-mockup-tier="A"
+         data-mockup-entry-point="report-complete-resting"
+         data-mockup-capture="[data-testid='report-download-menu']"
+         data-mockup-trigger='[{"action":"click","locator":"[data-testid=\"report-download-btn\"]"}]'>
+  <header class="app-header">
+    <div class="brand">MIROFISH</div>
+    <div class="view-switcher">
+      <button class="switch-btn">Graph</button>
+      <button class="switch-btn">Split</button>
+      <button class="switch-btn active">Workbench</button>
+    </div>
+    <div class="header-right">
+      <span class="lang">EN</span><span class="step-divider"></span>
+      <div class="workflow-step"><span class="step-num">Step 4/5</span><span class="step-name">Report</span></div>
+      <span class="step-divider"></span>
+      <span class="status-indicator"><span class="dot"></span>Completed</span>
+    </div>
+  </header>
+  <div class="content-area">
+    <div class="report-content-wrapper">
+      <div class="report-header-block">
+        <div class="rh-top">
+          <div class="report-meta">
+            <span class="report-tag">Prediction Report</span>
+            <span class="report-id">ID: report_ba69ab074c2e</span>
+          </div>
+          <div class="report-download" data-testid="report-download">
+            <button class="report-download__btn" data-testid="report-download-btn"
+                    aria-haspopup="menu" aria-expanded="true">⬇ Download <span class="caret">▲</span></button>
+            <!-- NEW menu -->
+            <div class="report-download__menu ring-new" role="menu" aria-label="Download format" data-testid="report-download-menu">
+              <button class="report-download__item" role="menuitem">
+                <span class="dl-ic docx">W</span>
+                <span><span class="dl-t">Word</span><span class="dl-s">.docx — share with stakeholders</span></span>
+              </button>
+              <button class="report-download__item" role="menuitem">
+                <span class="dl-ic md">M</span>
+                <span><span class="dl-t">Markdown</span><span class="dl-s">.md — raw / technical reuse</span></span>
+              </button>
+            </div>
+          </div>
+        </div>
+        <h1 class="main-title">Tropical Oasis 天猫国际官旗详情页预测报告</h1>
+        <p class="sub-title">基于群体模拟预测，从天猫平台与中国电商消费者视角分析该详情页能带来的销售结果预期与改进建议…</p>
+        <div class="header-divider"></div>
+      </div>
+      <p class="anno new"><span class="badge new">NEW</span> Two formats. <b>Word (.docx)</b> → backend builds a docx from the report Markdown via <code>python-docx</code>. <b>Markdown (.md)</b> → existing <code>/download</code> path. One endpoint, <code>?format=docx|md</code>.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ───────── STATE 3 ───────── -->
+<div class="state-cap"><span class="slug">upload-docx-accepted</span><span class="tierA">TIER A</span><span class="desc">start page · upload accepts .docx</span></div>
+<section class="screen"
+         data-mockup-state="upload-docx-accepted"
+         data-mockup-tier="A"
+         data-mockup-entry-point="none"
+         data-mockup-capture="[data-testid='upload-zone']"
+         data-mockup-trigger='[]'>
+  <header class="app-header">
+    <div class="brand">MIROFISH</div>
+    <div class="view-switcher"><button class="switch-btn active">Start</button></div>
+    <div class="header-right"><span class="lang">EN</span><span class="step-divider"></span><div class="workflow-step"><span class="step-num">Step 1/5</span><span class="step-name">Seed</span></div></div>
+  </header>
+  <div class="content-area">
+    <div class="home-body">
+      <div class="console-box">
+        <div class="console-section">
+          <div class="console-header">
+            <span class="console-label">Reality Seed</span>
+            <!-- CHANGED supported-formats string -->
+            <span class="console-meta ring-chg">Formats: PDF, DOCX, MD, TXT</span>
+          </div>
+          <div class="upload-zone" data-testid="upload-zone">
+            <div class="upload-icon">↑</div>
+            <div class="upload-title">Drag files here to upload</div>
+            <div class="upload-hint">or click to browse</div>
+            <div class="file-list">
+              <div class="file-item ring-new"><span class="ftag docx">DOCX</span><span class="fname">product-detail-page.docx</span><span class="fsize">38 KB</span></div>
+              <div class="file-item"><span class="ftag pdf">PDF</span><span class="fname">brand-brief.pdf</span><span class="fsize">512 KB</span></div>
+              <div class="file-item"><span class="ftag md">MD</span><span class="fname">notes.md</span><span class="fsize">6 KB</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <p class="anno chg"><span class="badge chg">CHANGED</span> Supported-formats label now reads <b>PDF, DOCX, MD, TXT</b>; the picker <code>accept</code> and the drag-drop validator both accept <code>.docx</code> (PDF already passes today).</p>
+      <p class="anno new"><span class="badge new">NEW</span> A <b>.docx</b> file is accepted (blue tag). On upload it is converted to Markdown via <b>markitdown</b> before entering the existing GraphRAG pipeline — no other ingest code changes.</p>
+    </div>
+  </div>
+</section>
+
+</body>
+</html>
