@@ -49,3 +49,16 @@ export const getReport = (reportId) => {
 export const chatWithReport = (data) => {
   return requestWithRetry(() => service.post('/api/report/chat', data), 3, 1000)
 }
+
+/**
+ * 下载报告，返回 Blob（responseType:'blob' 会绕过 success 拦截器）
+ * @param {string} reportId
+ * @param {('md'|'docx')} format
+ * @returns {Promise<Blob>}
+ */
+export const downloadReport = (reportId, format = 'md') => {
+  return service.get(`/api/report/${reportId}/download`, {
+    params: { format },
+    responseType: 'blob'
+  })
+}

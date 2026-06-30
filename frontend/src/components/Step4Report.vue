@@ -7,9 +7,33 @@
         <div v-if="reportOutline" class="report-content-wrapper">
           <!-- Report Header -->
           <div class="report-header-block">
-            <div class="report-meta">
-              <span class="report-tag">Prediction Report</span>
-              <span class="report-id">ID: {{ reportId || 'REF-2024-X92' }}</span>
+            <div class="rh-top">
+              <div class="report-meta">
+                <span class="report-tag">Prediction Report</span>
+                <span class="report-id">ID: {{ reportId || 'REF-2024-X92' }}</span>
+              </div>
+              <!-- Download control: only once the report is complete -->
+              <div v-if="isComplete" class="report-download">
+                <button
+                  class="report-download__btn"
+                  @click.stop="showDownloadMenu = !showDownloadMenu"
+                  aria-haspopup="menu"
+                  :aria-expanded="showDownloadMenu"
+                >⬇ Download <span class="caret">{{ showDownloadMenu ? '▲' : '▼' }}</span></button>
+                <template v-if="showDownloadMenu">
+                  <div class="report-download__overlay" @click="showDownloadMenu = false"></div>
+                  <div class="report-download__menu" role="menu" aria-label="Download format">
+                    <button class="report-download__item" role="menuitem" @click="onDownload('docx')">
+                      <span class="dl-ic docx">W</span>
+                      <span class="dl-text"><span class="dl-t">Word</span><span class="dl-s">.docx — share</span></span>
+                    </button>
+                    <button class="report-download__item" role="menuitem" @click="onDownload('md')">
+                      <span class="dl-ic md">M</span>
+                      <span class="dl-text"><span class="dl-t">Markdown</span><span class="dl-s">.md — raw</span></span>
+                    </button>
+                  </div>
+                </template>
+              </div>
             </div>
             <h1 class="main-title">{{ reportOutline.title }}</h1>
             <p class="sub-title">{{ reportOutline.summary }}</p>
@@ -393,7 +417,7 @@
 import { ref, computed, watch, onMounted, onUnmounted, nextTick, h, reactive } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { getAgentLog, getConsoleLog } from '../api/report'
+import { getAgentLog, getConsoleLog, downloadReport } from '../api/report'
 
 const router = useRouter()
 const { t } = useI18n()
@@ -413,6 +437,25 @@ const goToInteraction = () => {
   }
 }
 
+// Download the finished report as .docx or .md
+const onDownload = async (format) => {
+  showDownloadMenu.value = false
+  if (!props.reportId) return
+  try {
+    const blob = await downloadReport(props.reportId, format)
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${props.reportId}.${format}`
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    URL.revokeObjectURL(url)
+  } catch (err) {
+    emit('add-log', `下载失败: ${err.message || err}`)
+  }
+}
+
 // State
 const agentLogs = ref([])
 const consoleLogs = ref([])
@@ -425,6 +468,7 @@ const expandedContent = ref(new Set())
 const expandedLogs = ref(new Set())
 const collapsedSections = ref(new Set())
 const isComplete = ref(false)
+const showDownloadMenu = ref(false)
 const startTime = ref(null)
 const leftPanel = ref(null)
 const rightPanel = ref(null)
@@ -5159,4 +5203,38 @@ watch(() => props.reportId, (newId) => {
 html[lang="en"] .report-header-block .main-title {
   font-size: 28px;
 }
+
+/* ── Report download control ───────────────────────────── */
+.rh-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
+.report-download { position: relative; flex: none; }
+.report-download__btn {
+  display: inline-flex; align-items: center; gap: 8px;
+  background: #111; color: #fff; border: none; border-radius: 8px;
+  padding: 8px 14px; font-size: 12.5px; font-weight: 600; cursor: pointer; font-family: inherit;
+}
+.report-download__btn .caret { font-size: 9px; opacity: .85; }
+.report-download__btn:focus-visible { outline: 2px solid #FF5722; outline-offset: 2px; }
+.report-download__overlay { position: fixed; inset: 0; z-index: 40; }
+.report-download__menu {
+  position: absolute; top: calc(100% + 8px); right: 0; z-index: 41;
+  background: #fff; border: 1px solid #E5E7EB; border-radius: 10px;
+  box-shadow: 0 10px 28px rgba(0,0,0,.14); width: 220px; overflow: hidden;
+}
+.report-download__item {
+  display: flex; align-items: center; gap: 11px; width: 100%;
+  padding: 11px 14px; font-size: 13px; text-align: left;
+  background: #fff; border: 0; border-bottom: 1px solid #F3F4F6; cursor: pointer;
+}
+.report-download__item:last-child { border-bottom: none; }
+.report-download__item:hover { background: #FAFAFA; }
+.report-download__item:focus-visible { background: #FFF4EF; outline: 2px solid #FF5722; outline-offset: -2px; }
+.report-download .dl-ic {
+  width: 26px; height: 26px; border-radius: 6px; display: flex; align-items: center;
+  justify-content: center; font-size: 11px; font-weight: 800; color: #fff; flex: none;
+}
+.report-download .dl-ic.docx { background: #2B579A; }
+.report-download .dl-ic.md { background: #111; }
+.report-download .dl-text { display: flex; flex-direction: column; }
+.report-download .dl-t { font-weight: 600; line-height: 1.2; }
+.report-download .dl-s { font-size: 11px; color: #666; }
 </style>
