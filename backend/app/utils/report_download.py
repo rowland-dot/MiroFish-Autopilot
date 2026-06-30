@@ -8,7 +8,8 @@ yields Markdown — the existing default behaviour.
 _DOCX_MIME = (
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 )
-_MD_MIME = "text/markdown; charset=utf-8"
+# Flask appends "; charset=utf-8" for text/* mimetypes — keep it bare here.
+_MD_MIME = "text/markdown"
 
 
 def render_report_download(report, fmt):
