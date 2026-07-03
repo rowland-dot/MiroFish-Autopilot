@@ -1031,9 +1031,12 @@ def create_model(config: Dict[str, Any], use_boost: bool = False):
     
     print(f"{config_label} model={llm_model}, base_url={llm_base_url[:40] if llm_base_url else '默认'}...")
     
+    # 降低推理开销：模拟Agent的动作决策无需完整推理（见 app/utils/simulation_model.py）
+    from app.utils.simulation_model import simulation_model_config
     return ModelFactory.create(
         model_platform=ModelPlatformType.OPENAI,
         model_type=llm_model,
+        model_config_dict=simulation_model_config(),
     )
 
 
