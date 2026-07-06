@@ -41,6 +41,10 @@ def create_app(config_class=Config):
     
     # 启用CORS
     CORS(app, resources={r"/api/*": {"origins": "*"}})
+
+    # 访问口令门（AUTH_ENABLED=true 时生效，保护页面与所有 /api/* 接口）
+    from .auth import init_auth
+    init_auth(app)
     
     # 注册模拟进程清理函数（确保服务器关闭时终止所有模拟进程）
     from .services.simulation_runner import SimulationRunner

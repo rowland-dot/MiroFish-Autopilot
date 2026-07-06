@@ -23,6 +23,10 @@ class Config:
     # Flask配置
     SECRET_KEY = os.environ.get('SECRET_KEY', 'mirofish-secret-key')
     DEBUG = os.environ.get('FLASK_DEBUG', 'True').lower() == 'true'
+
+    # 访问口令门（仅在部署时启用；本地默认关闭，测试时设 AUTH_ENABLED=true）
+    AUTH_ENABLED = os.environ.get('AUTH_ENABLED', 'false').lower() == 'true'
+    ACCESS_CODE = os.environ.get('ACCESS_CODE', '')
     
     # JSON配置 - 禁用ASCII转义，让中文直接显示（而不是 \uXXXX 格式）
     JSON_AS_ASCII = False
