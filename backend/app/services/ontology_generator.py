@@ -213,11 +213,12 @@ class OntologyGenerator:
             {"role": "user", "content": user_message}
         ]
         
-        # 调用LLM
+        # 调用LLM（chat_json 已内置：低推理力度 + 充足 max_tokens + 失败重试，
+        # 避免推理型模型的思考token挤占预算导致本体JSON被截断）
         result = self.llm_client.chat_json(
             messages=messages,
             temperature=0.3,
-            max_tokens=4096
+            max_tokens=16384
         )
         
         # 验证和后处理
