@@ -176,8 +176,47 @@
             <div class="console-section">
               <div class="console-header">
                 <span class="console-label">{{ $t('home.simulationPrompt') }}</span>
+                <!-- 历史提示词按钮：无可用历史时完全隐藏 -->
+                <button
+                  v-if="promptHistory.length"
+                  class="prompt-history-btn"
+                  @click.stop="showPromptHistory = !showPromptHistory"
+                >
+                  <span class="ph-ic">↺</span>
+                  {{ $t('home.promptHistoryBtn', { count: promptHistory.length }) }}
+                </button>
               </div>
               <div class="input-wrapper">
+                <!-- 历史提示词浮层：覆盖在输入框上方，不改变页面布局 -->
+                <template v-if="showPromptHistory">
+                  <div class="prompt-history-backdrop" @click="showPromptHistory = false"></div>
+                  <div class="prompt-history-panel">
+                    <div class="php-head">
+                      <span class="php-title">{{ $t('home.promptHistoryTitle') }} · {{ promptHistory.length }}</span>
+                      <span class="php-actions">
+                        <button class="php-clear" @click="clearAllPrompts">{{ $t('home.promptHistoryClearAll') }}</button>
+                        <button class="php-close" @click="showPromptHistory = false">✕</button>
+                      </span>
+                    </div>
+                    <div class="php-list">
+                      <div
+                        v-for="p in promptHistory"
+                        :key="p.text"
+                        class="php-item"
+                        @click="usePrompt(p)"
+                      >
+                        <div class="php-text">{{ p.text }}</div>
+                        <div class="php-meta">{{ p.date }}<template v-if="p.simulationId"> · {{ p.simulationId }}</template></div>
+                        <button
+                          class="php-remove"
+                          :title="$t('home.promptHistoryHide')"
+                          @click.stop="hidePrompt(p)"
+                        >✕</button>
+                      </div>
+                    </div>
+                    <div class="php-foot">{{ $t('home.promptHistoryFoot', { cap: PROMPT_CAP }) }}</div>
+                  </div>
+                </template>
                 <textarea
                   v-model="formData.simulationRequirement"
                   class="code-input"
@@ -212,16 +251,72 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import HistoryDatabase from '../components/HistoryDatabase.vue'
 import LanguageSwitcher from '../components/LanguageSwitcher.vue'
+import { getSimulationHistory } from '../api/simulation'
+import { selectPrompts, addHidden, PROMPT_CAP } from '../utils/promptHistory'
 
 const router = useRouter()
 
 // 表单数据
 const formData = ref({
   simulationRequirement: ''
+})
+
+// ===== 历史提示词（快速复用）=====
+// 数据来自现有 /api/simulation/history；隐藏偏好仅存本浏览器。
+const PROMPT_HIDDEN_KEY = 'mirofish_hidden_prompts'
+
+const loadHiddenPrompts = () => {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(PROMPT_HIDDEN_KEY))
+    return Array.isArray(parsed) ? parsed : []
+  } catch {
+    return []
+  }
+}
+
+const promptHistoryItems = ref([])
+const hiddenPrompts = ref(loadHiddenPrompts())
+const showPromptHistory = ref(false)
+
+const promptHistory = computed(() => selectPrompts(promptHistoryItems.value, hiddenPrompts.value))
+
+const saveHiddenPrompts = () => {
+  try {
+    localStorage.setItem(PROMPT_HIDDEN_KEY, JSON.stringify(hiddenPrompts.value))
+  } catch {
+    // 存储不可用时静默降级：隐藏仅在当前会话生效
+  }
+}
+
+const usePrompt = (p) => {
+  formData.value.simulationRequirement = p.text
+  showPromptHistory.value = false
+}
+
+const hidePrompt = (p) => {
+  hiddenPrompts.value = addHidden(hiddenPrompts.value, p.text)
+  saveHiddenPrompts()
+}
+
+const clearAllPrompts = () => {
+  for (const p of [...promptHistory.value]) {
+    hiddenPrompts.value = addHidden(hiddenPrompts.value, p.text)
+  }
+  saveHiddenPrompts()
+  showPromptHistory.value = false
+}
+
+onMounted(async () => {
+  try {
+    const res = await getSimulationHistory(50)
+    promptHistoryItems.value = Array.isArray(res.data) ? res.data : []
+  } catch {
+    // 拉取失败则按钮不显示，不影响页面其他功能
+  }
 })
 
 // 文件列表
@@ -949,5 +1044,61 @@ html[lang="en"] .workflow-list .step-desc {
 
 html[lang="en"] .workflow-list {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+/* ── 历史提示词（快速复用） ─────────────────────────── */
+.prompt-history-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  border: 1px solid #E5E7EB; background: #fff; border-radius: 7px;
+  padding: 5px 10px; font-size: 11.5px; font-weight: 600; color: #444;
+  cursor: pointer; font-family: inherit;
+}
+.prompt-history-btn:hover { border-color: #bbb; }
+.prompt-history-btn .ph-ic { font-size: 12px; }
+.prompt-history-backdrop { position: fixed; inset: 0; z-index: 30; }
+.prompt-history-panel {
+  position: absolute; top: 0; left: 0; right: 0; z-index: 31;
+  background: #fff; border: 1px solid #E5E7EB; border-radius: 10px;
+  box-shadow: 0 12px 32px rgba(0,0,0,.14); overflow: hidden;
+}
+.php-head {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 10px 14px; border-bottom: 1px solid #F3F4F6;
+}
+.php-title {
+  font-family: 'JetBrains Mono', monospace; font-size: 11px;
+  font-weight: 700; letter-spacing: .05em; color: #666;
+}
+.php-actions { display: flex; align-items: center; gap: 12px; }
+.php-clear {
+  border: 0; background: none; font-size: 11px; font-weight: 600;
+  color: #999; cursor: pointer; text-decoration: underline; font-family: inherit;
+}
+.php-clear:hover { color: #C2283B; }
+.php-close { border: 0; background: none; font-size: 13px; color: #999; cursor: pointer; }
+.php-list { max-height: 300px; overflow-y: auto; }
+.php-item {
+  padding: 11px 14px; border-bottom: 1px solid #F3F4F6;
+  cursor: pointer; position: relative;
+}
+.php-item:hover { background: #FAFAFA; }
+.php-item:last-child { border-bottom: none; }
+.php-text {
+  font-size: 12.5px; line-height: 1.55; color: #222; padding-right: 22px;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.php-meta {
+  font-family: 'JetBrains Mono', monospace; font-size: 10px;
+  color: #999; margin-top: 5px;
+}
+.php-remove {
+  position: absolute; top: 9px; right: 10px; border: 0; background: none;
+  color: #ccc; font-size: 13px; cursor: pointer; line-height: 1; display: none;
+}
+.php-item:hover .php-remove { display: block; }
+.php-remove:hover { color: #C2283B; }
+.php-foot {
+  padding: 8px 14px; font-family: 'JetBrains Mono', monospace; font-size: 10px;
+  color: #999; border-top: 1px solid #F3F4F6; text-align: center;
 }
 </style>

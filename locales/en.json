@@ -68,6 +68,11 @@
     "simulationPrompt": ">_ 02 / Simulation Prompt",
     "promptPlaceholder": "// Describe your simulation or prediction requirement in natural language",
     "engineBadge": "Engine: MiroFish-V1.0",
+    "promptHistoryBtn": "History ({count})",
+    "promptHistoryTitle": "RECENT PROMPTS",
+    "promptHistoryClearAll": "Clear all",
+    "promptHistoryHide": "Hide this prompt",
+    "promptHistoryFoot": "keeps the {cap} most recent unique prompts",
     "startEngine": "Start Engine",
     "initializing": "Initializing..."
   },
