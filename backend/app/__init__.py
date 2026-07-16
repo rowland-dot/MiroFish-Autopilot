@@ -73,6 +73,11 @@ def create_app(config_class=Config):
     app.register_blueprint(simulation_bp, url_prefix='/api/simulation')
     app.register_blueprint(report_bp, url_prefix='/api/report')
     app.register_blueprint(settings_bp, url_prefix='/api/settings')
+
+    # 单容器部署：若存在已构建的前端（frontend/dist），由 Flask 同端口伺服
+    from .static_site import init_static_site
+    default_dist = os.path.join(os.path.dirname(__file__), '..', '..', 'frontend', 'dist')
+    init_static_site(app, os.environ.get('STATIC_DIST', default_dist))
     
     # 健康检查
     @app.route('/health')
