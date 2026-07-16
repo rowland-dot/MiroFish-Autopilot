@@ -1117,6 +1117,8 @@ const launch = () => {
   white-space: nowrap;
 }
 .btn-hint .h { flex: 1; }
+/* 右列按钮内容居中，其提示也居中，使两列各自上下对齐 */
+.btn-hint .h:last-child { text-align: center; }
 .btn-hint b { color: #555; font-weight: 600; }
 
 /* 引导动画：微妙的边框脉冲 */
