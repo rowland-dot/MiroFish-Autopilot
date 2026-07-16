@@ -254,27 +254,29 @@
 
             <!-- 启动按钮：手动逐步 / 自动直达报告 -->
             <div class="console-section btn-section">
-              <button
-                class="start-engine-btn"
-                @click="startSimulation"
-                :disabled="!canSubmit || loading"
-              >
-                <span v-if="!loading">{{ $t('home.startEngine') }}</span>
-                <span v-else>{{ $t('home.initializing') }}</span>
-                <span class="btn-arrow">→</span>
-              </button>
-              <button
-                class="auto-run-btn"
-                @click="startAutoRun"
-                :disabled="!canSubmit || loading"
-              >
-                <span class="auto-main">⚡ {{ $t('home.autoRunBtn') }}</span>
-                <span class="auto-sub">{{ $t('home.autoRunSubtitle') }}</span>
-              </button>
-            </div>
-            <div class="btn-hint">
-              <span class="h"><b>{{ $t('home.startEngine') }}</b>{{ $t('home.manualHint') }}</span>
-              <span class="h"><b>{{ $t('home.autoRunBtn') }}</b>{{ $t('home.autoHint') }}</span>
+              <div class="btn-row">
+                <button
+                  class="start-engine-btn"
+                  @click="startSimulation"
+                  :disabled="!canSubmit || loading"
+                >
+                  <span v-if="!loading">{{ $t('home.startEngine') }}</span>
+                  <span v-else>{{ $t('home.initializing') }}</span>
+                  <span class="btn-arrow">→</span>
+                </button>
+                <button
+                  class="auto-run-btn"
+                  @click="startAutoRun"
+                  :disabled="!canSubmit || loading"
+                >
+                  <span class="auto-main">⚡ {{ $t('home.autoRunBtn') }}</span>
+                  <span class="auto-sub">{{ $t('home.autoRunSubtitle') }}</span>
+                </button>
+              </div>
+              <div class="btn-hint">
+                <span class="h"><b>{{ $t('home.startEngine') }}</b>{{ $t('home.manualHint') }}</span>
+                <span class="h"><b>{{ $t('home.autoRunBtn') }}</b>{{ $t('home.autoHint') }}</span>
+              </div>
             </div>
           </div>
         </div>
@@ -1042,8 +1044,8 @@ const launch = () => {
 }
 
 /* 自动直达报告：与启动引擎并排的第二启动按钮 */
-.btn-section { display: flex; gap: 12px; }
-.btn-section .start-engine-btn { flex: 1; width: auto; }
+.btn-row { display: flex; gap: 12px; }
+.btn-row .start-engine-btn { flex: 1; width: auto; }
 .auto-run-btn {
   flex: 1;
   border: none;
@@ -1083,7 +1085,7 @@ const launch = () => {
 }
 .btn-hint {
   display: flex;
-  gap: 14px;
+  gap: 12px; /* 与按钮行对齐 */
   margin-top: 10px;
   font-size: 0.72rem;
   color: #999;
