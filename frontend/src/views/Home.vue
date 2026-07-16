@@ -228,9 +228,9 @@
               </div>
             </div>
 
-            <!-- 启动按钮 -->
+            <!-- 启动按钮：手动逐步 / 自动直达报告 -->
             <div class="console-section btn-section">
-              <button 
+              <button
                 class="start-engine-btn"
                 @click="startSimulation"
                 :disabled="!canSubmit || loading"
@@ -239,6 +239,18 @@
                 <span v-else>{{ $t('home.initializing') }}</span>
                 <span class="btn-arrow">→</span>
               </button>
+              <button
+                class="auto-run-btn"
+                @click="startAutoRun"
+                :disabled="!canSubmit || loading"
+              >
+                <span class="auto-main">⚡ {{ $t('home.autoRunBtn') }}</span>
+                <span class="auto-sub">{{ $t('home.autoRunSubtitle') }}</span>
+              </button>
+            </div>
+            <div class="btn-hint">
+              <span class="h"><b>{{ $t('home.startEngine') }}</b>{{ $t('home.manualHint') }}</span>
+              <span class="h"><b>{{ $t('home.autoRunBtn') }}</b>{{ $t('home.autoHint') }}</span>
             </div>
           </div>
         </div>
@@ -257,6 +269,7 @@ import HistoryDatabase from '../components/HistoryDatabase.vue'
 import LanguageSwitcher from '../components/LanguageSwitcher.vue'
 import { getSimulationHistory } from '../api/simulation'
 import { selectPrompts, addHidden, PROMPT_CAP } from '../utils/promptHistory'
+import { enableAutoPilot, disableAutoPilot } from '../utils/autoPilot'
 
 const router = useRouter()
 
@@ -392,11 +405,24 @@ const scrollToBottom = () => {
 // 开始模拟 - 立即跳转，API调用在Process页面进行
 const startSimulation = () => {
   if (!canSubmit.value || loading.value) return
-  
+
+  // 手动模式：清掉可能残留的自动驾驶标记，确保行为与以往完全一致
+  disableAutoPilot()
+  launch()
+}
+
+// 自动直达报告：设置自动驾驶标记后走完全相同的启动流程
+const startAutoRun = () => {
+  if (!canSubmit.value || loading.value) return
+  enableAutoPilot()
+  launch()
+}
+
+const launch = () => {
   // 存储待上传的数据
   import('../store/pendingUpload.js').then(({ setPendingUpload }) => {
     setPendingUpload(files.value, formData.value.simulationRequirement)
-    
+
     // 立即跳转到Process页面（使用特殊标识表示新建项目）
     router.push({
       name: 'Process',
@@ -961,6 +987,57 @@ const startSimulation = () => {
   transform: none;
   border: 1px solid #E5E5E5;
 }
+
+/* 自动直达报告：与启动引擎并排的第二启动按钮 */
+.btn-section { display: flex; gap: 12px; }
+.btn-section .start-engine-btn { flex: 1; width: auto; }
+.auto-run-btn {
+  flex: 1;
+  border: none;
+  padding: 12px 16px;
+  color: var(--white);
+  background: linear-gradient(135deg, #FF5722, #FF8A50);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  transition: all 0.3s ease;
+}
+.auto-run-btn .auto-main {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 1rem;
+  letter-spacing: 1px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.auto-run-btn .auto-sub {
+  font-size: 0.68rem;
+  font-weight: 500;
+  opacity: 0.92;
+  letter-spacing: 0.02em;
+}
+.auto-run-btn:hover:not(:disabled) { filter: brightness(1.07); transform: translateY(-2px); }
+.auto-run-btn:active:not(:disabled) { transform: translateY(0); }
+.auto-run-btn:disabled {
+  background: #E5E5E5;
+  color: #999;
+  cursor: not-allowed;
+  transform: none;
+}
+.btn-hint {
+  display: flex;
+  gap: 14px;
+  margin-top: 10px;
+  font-size: 0.72rem;
+  color: #999;
+  line-height: 1.6;
+}
+.btn-hint .h { flex: 1; }
+.btn-hint b { color: #555; font-weight: 600; }
 
 /* 引导动画：微妙的边框脉冲 */
 @keyframes pulse-border {

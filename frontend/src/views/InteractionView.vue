@@ -73,6 +73,7 @@ import { getProject, getGraphData } from '../api/graph'
 import { getSimulation } from '../api/simulation'
 import { getReport } from '../api/report'
 import LanguageSwitcher from '../components/LanguageSwitcher.vue'
+import { disableAutoPilot } from '../utils/autoPilot'
 
 const route = useRoute()
 const router = useRouter()
@@ -213,6 +214,8 @@ watch(() => route.params.reportId, (newId) => {
 }, { immediate: true })
 
 onMounted(() => {
+  // 终点站：自动驾驶到此结束
+  disableAutoPilot()
   addLog(t('log.interactionViewInit'))
   loadReportData()
 })

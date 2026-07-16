@@ -73,8 +73,16 @@
     "promptHistoryClearAll": "Clear all",
     "promptHistoryHide": "Hide this prompt",
     "promptHistoryFoot": "keeps the {cap} most recent unique prompts",
+    "autoRunBtn": "Auto-Run to Report",
+    "autoRunSubtitle": "unattended · auto-advances steps 1 → 5",
+    "manualHint": ": same as always — you click into each next step yourself.",
+    "autoHint": ": runs every step with recommended settings until the report is done; exit anytime.",
     "startEngine": "Start Engine",
     "initializing": "Initializing..."
+  },
+  "autoPilot": {
+    "pill": "AUTO-PILOT",
+    "exit": "Exit auto"
   },
   "main": {
     "layoutGraph": "Graph",

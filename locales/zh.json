@@ -73,8 +73,16 @@
     "promptHistoryClearAll": "清除全部",
     "promptHistoryHide": "隐藏该提示词",
     "promptHistoryFoot": "保留最近 {cap} 条不重复提示词",
+    "autoRunBtn": "自动直达报告",
+    "autoRunSubtitle": "全程无人值守 · 1 → 5 步自动推进",
+    "manualHint": "：与现在完全一致——每步完成后由你点击进入下一步。",
+    "autoHint": "：使用系统推荐配置自动完成全部步骤，直到报告生成；期间可随时退出。",
     "startEngine": "启动引擎",
     "initializing": "初始化中..."
+  },
+  "autoPilot": {
+    "pill": "自动驾驶",
+    "exit": "退出自动"
   },
   "main": {
     "layoutGraph": "图谱",

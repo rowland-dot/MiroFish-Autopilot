@@ -418,6 +418,7 @@ import { ref, computed, watch, onMounted, onUnmounted, nextTick, h, reactive } f
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { getAgentLog, getConsoleLog, downloadReport } from '../api/report'
+import { isAutoPilot } from '../utils/autoPilot'
 
 const router = useRouter()
 const { t } = useI18n()
@@ -469,6 +470,16 @@ const expandedLogs = ref(new Set())
 const collapsedSections = ref(new Set())
 const isComplete = ref(false)
 const showDownloadMenu = ref(false)
+
+// 自动驾驶：报告完成后自动进入深度互动（终点站）
+// （spec: docs/specs/2026-07-16-auto-pilot-pipeline-spec.md）
+watch(isComplete, (v) => {
+  if (v && isAutoPilot()) {
+    setTimeout(() => {
+      if (isAutoPilot()) goToInteraction()
+    }, 1500)
+  }
+})
 const startTime = ref(null)
 const leftPanel = ref(null)
 const rightPanel = ref(null)

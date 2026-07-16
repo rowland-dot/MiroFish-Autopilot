@@ -191,6 +191,7 @@ import { computed, ref, watch, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { createSimulation } from '../api/simulation'
+import { isAutoPilot } from '../utils/autoPilot'
 
 const router = useRouter()
 const { t } = useI18n()
@@ -244,6 +245,16 @@ const handleEnterEnvSetup = async () => {
     creatingSimulation.value = false
   }
 }
+
+// 自动驾驶：图谱构建完成后自动进入环境搭建
+// （spec: docs/specs/2026-07-16-auto-pilot-pipeline-spec.md）
+watch(() => props.currentPhase, (phase) => {
+  if (phase === 2 && isAutoPilot() && !creatingSimulation.value) {
+    setTimeout(() => {
+      if (isAutoPilot() && !creatingSimulation.value) handleEnterEnvSetup()
+    }, 1500)
+  }
+})
 
 const selectOntologyItem = (item, type) => {
   selectedOntologyItem.value = { ...item, itemType: type }

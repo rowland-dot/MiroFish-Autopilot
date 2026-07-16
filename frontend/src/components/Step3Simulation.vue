@@ -296,6 +296,7 @@ import {
   getRunStatusDetail
 } from '../api/simulation'
 import { generateReport } from '../api/report'
+import { isAutoPilot } from '../utils/autoPilot'
 
 const { t } = useI18n()
 
@@ -676,6 +677,16 @@ const handleNextStep = async () => {
     isGeneratingReport.value = false
   }
 }
+
+// 自动驾驶：模拟完成后自动生成报告并进入下一步
+// （spec: docs/specs/2026-07-16-auto-pilot-pipeline-spec.md）
+watch(phase, (v) => {
+  if (v === 2 && isAutoPilot() && !isGeneratingReport.value) {
+    setTimeout(() => {
+      if (isAutoPilot() && !isGeneratingReport.value) handleNextStep()
+    }, 1500)
+  }
+})
 
 // Scroll log to bottom
 const logContent = ref(null)
