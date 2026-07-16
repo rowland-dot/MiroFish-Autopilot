@@ -5177,6 +5177,9 @@ watch(() => props.reportId, (newId) => {
 .log-msg.error { color: #EF5350; }
 .log-msg.warning { color: #FFA726; }
 .log-msg.success { color: #66BB6A; }
+
+/* 报告头部首行：meta 居左，下载按钮固定右上（被误删的布局规则，恢复） */
+.rh-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
 </style>
 
 <style>

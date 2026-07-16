@@ -7,9 +7,13 @@
         <div v-if="reportOutline" class="report-content-wrapper">
           <!-- Report Header -->
           <div class="report-header-block">
-            <div class="report-meta">
-              <span class="report-tag">Prediction Report</span>
-              <span class="report-id">ID: {{ reportId || 'REF-2024-X92' }}</span>
+            <div class="rh-top">
+              <div class="report-meta">
+                <span class="report-tag">Prediction Report</span>
+                <span class="report-id">ID: {{ reportId || 'REF-2024-X92' }}</span>
+              </div>
+              <!-- 下载报告：与 Step 4 相同位置（报告头右上角） -->
+              <ReportDownload v-if="reportId" :report-id="reportId" />
             </div>
             <h1 class="main-title">{{ reportOutline.title }}</h1>
             <p class="sub-title">{{ reportOutline.summary }}</p>
@@ -414,6 +418,7 @@
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { chatWithReport, getReport, getAgentLog } from '../api/report'
+import ReportDownload from './ReportDownload.vue'
 import { interviewAgents, getSimulationProfilesRealtime } from '../api/simulation'
 
 const { t } = useI18n()
@@ -1027,6 +1032,9 @@ watch(() => props.simulationId, (newId) => {
 .report-header-block {
   margin-bottom: 30px;
 }
+
+/* 报告头部首行：meta 居左，下载按钮右上（与 Step 4 相同布局） */
+.rh-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
 
 .report-meta {
   display: flex;

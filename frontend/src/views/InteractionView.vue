@@ -21,8 +21,6 @@
       </div>
 
       <div class="header-right">
-        <ReportDownload v-if="currentReportId" :report-id="currentReportId" />
-        <div class="step-divider"></div>
         <LanguageSwitcher />
         <div class="step-divider"></div>
         <div class="workflow-step">
@@ -75,7 +73,6 @@ import { getProject, getGraphData } from '../api/graph'
 import { getSimulation } from '../api/simulation'
 import { getReport } from '../api/report'
 import LanguageSwitcher from '../components/LanguageSwitcher.vue'
-import ReportDownload from '../components/ReportDownload.vue'
 import { disableAutoPilot } from '../utils/autoPilot'
 
 const route = useRoute()
