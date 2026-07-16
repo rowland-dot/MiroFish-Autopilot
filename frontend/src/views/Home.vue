@@ -228,6 +228,30 @@
               </div>
             </div>
 
+            <!-- 引擎设置：思考深度（部署级，全队共用） -->
+            <div class="console-section">
+              <div class="console-header">
+                <span class="console-label">&gt;_ 03 / {{ $t('home.engineSettings') }}</span>
+              </div>
+              <div class="think-level">
+                <span class="tl-label">{{ $t('home.thinkLevelLabel') }}</span>
+                <div class="tl-seg">
+                  <button
+                    class="tl-opt"
+                    :class="{ active: thinkLevel === 'economy', eco: thinkLevel === 'economy' }"
+                    @click="setThinkLevel('economy')"
+                  >⚡ {{ $t('home.thinkLevelEconomy') }}</button>
+                  <button
+                    class="tl-opt"
+                    :class="{ active: thinkLevel === 'deep' }"
+                    @click="setThinkLevel('deep')"
+                  >🧠 {{ $t('home.thinkLevelDeep') }}</button>
+                </div>
+                <span class="tl-hint">{{ thinkLevel === 'economy' ? $t('home.thinkLevelEconomyHint') : $t('home.thinkLevelDeepHint') }}</span>
+                <span v-if="thinkLevelSaved" class="tl-saved">✓ {{ $t('home.thinkLevelSaved') }}</span>
+              </div>
+            </div>
+
             <!-- 启动按钮：手动逐步 / 自动直达报告 -->
             <div class="console-section btn-section">
               <button
@@ -270,6 +294,7 @@ import LanguageSwitcher from '../components/LanguageSwitcher.vue'
 import { getSimulationHistory } from '../api/simulation'
 import { selectPrompts, addHidden, PROMPT_CAP } from '../utils/promptHistory'
 import { enableAutoPilot, disableAutoPilot } from '../utils/autoPilot'
+import { getSettings, updateSettings } from '../api/settings'
 
 const router = useRouter()
 
@@ -329,6 +354,34 @@ onMounted(async () => {
     promptHistoryItems.value = Array.isArray(res.data) ? res.data : []
   } catch {
     // 拉取失败则按钮不显示，不影响页面其他功能
+  }
+})
+
+// ===== 思考深度（部署级设置，服务器持久化）=====
+const thinkLevel = ref('economy')
+const thinkLevelSaved = ref(false)
+let savedTimer = null
+
+const setThinkLevel = async (level) => {
+  if (level === thinkLevel.value) return
+  const previous = thinkLevel.value
+  thinkLevel.value = level
+  try {
+    await updateSettings({ think_level: level })
+    thinkLevelSaved.value = true
+    clearTimeout(savedTimer)
+    savedTimer = setTimeout(() => { thinkLevelSaved.value = false }, 2000)
+  } catch {
+    thinkLevel.value = previous // 保存失败则回滚显示
+  }
+}
+
+onMounted(async () => {
+  try {
+    const res = await getSettings()
+    if (res.data?.think_level) thinkLevel.value = res.data.think_level
+  } catch {
+    // 读取失败保持默认显示（economy），不影响页面其他功能
   }
 })
 
@@ -1035,6 +1088,31 @@ const launch = () => {
   font-size: 0.72rem;
   color: #999;
   line-height: 1.6;
+}
+
+/* 思考深度（引擎设置） */
+.think-level {
+  display: flex; align-items: center; gap: 10px; margin-top: 10px;
+  padding: 12px 14px; border: 1px solid #F3F4F6; border-radius: 10px;
+  background: #FCFCFB;
+}
+.tl-label {
+  font-family: var(--font-mono); font-size: 11.5px; font-weight: 700;
+  color: #444; white-space: nowrap;
+}
+.tl-seg { display: flex; background: #EFEFEC; border-radius: 8px; padding: 3px; gap: 3px; }
+.tl-opt {
+  border: 0; border-radius: 6px; padding: 7px 16px; font-size: 12px;
+  font-weight: 600; color: #666; background: transparent; cursor: pointer;
+  display: flex; align-items: center; gap: 6px; white-space: nowrap;
+  font-family: inherit;
+}
+.tl-opt.active { background: #fff; color: #000; box-shadow: 0 1px 4px rgba(0,0,0,.10); }
+.tl-opt.active.eco { color: #C2410C; }
+.tl-hint { font-size: 11px; color: #999; line-height: 1.5; flex: 1; }
+.tl-saved {
+  font-family: var(--font-mono); font-size: 10px; color: #1A936F;
+  white-space: nowrap;
 }
 .btn-hint .h { flex: 1; }
 .btn-hint b { color: #555; font-weight: 600; }

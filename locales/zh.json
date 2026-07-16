@@ -77,6 +77,13 @@
     "autoRunSubtitle": "全程无人值守 · 1 → 5 步自动推进",
     "manualHint": "：与现在完全一致——每步完成后由你点击进入下一步。",
     "autoHint": "：使用系统推荐配置自动完成全部步骤，直到报告生成；期间可随时退出。",
+    "engineSettings": "引擎设置",
+    "thinkLevelLabel": "思考深度",
+    "thinkLevelEconomy": "经济",
+    "thinkLevelDeep": "深度",
+    "thinkLevelEconomyHint": "模拟Agent与内部结构化调用降低思考量，token 消耗约减半（MiniMax 已验证）；报告生成始终保持完整深度。",
+    "thinkLevelDeepHint": "模型完整思考——各家 LLM 的原生默认行为，兼容任意 OpenAI 格式 API；token 消耗更高。",
+    "thinkLevelSaved": "已保存",
     "startEngine": "启动引擎",
     "initializing": "初始化中..."
   },

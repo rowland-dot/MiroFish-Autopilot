@@ -77,6 +77,13 @@
     "autoRunSubtitle": "unattended · auto-advances steps 1 → 5",
     "manualHint": ": same as always — you click into each next step yourself.",
     "autoHint": ": runs every step with recommended settings until the report is done; exit anytime.",
+    "engineSettings": "Engine Settings",
+    "thinkLevelLabel": "Think level",
+    "thinkLevelEconomy": "Economy",
+    "thinkLevelDeep": "Deep",
+    "thinkLevelEconomyHint": "Lower reasoning on simulation agents & internal structured calls (~50% fewer tokens, MiniMax-validated); report generation always runs full depth.",
+    "thinkLevelDeepHint": "Full model thinking — each provider's stock behavior, compatible with any OpenAI-format API; higher token use.",
+    "thinkLevelSaved": "Saved",
     "startEngine": "Start Engine",
     "initializing": "Initializing..."
   },
