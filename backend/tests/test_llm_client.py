@@ -33,7 +33,10 @@ def test_chat_json_retries_a_truncated_response_then_succeeds():
     assert len(calls) == 2  # retried exactly once
 
 
-def test_chat_json_requests_json_with_low_reasoning():
+def test_chat_json_low_reasoning_in_economy_mode(tmp_path, monkeypatch):
+    import app.utils.app_settings as app_settings
+    monkeypatch.setattr(app_settings, "_DEFAULT_PATH", str(tmp_path / "s.json"))
+
     client = _client()
     seen = {}
 
@@ -45,7 +48,27 @@ def test_chat_json_requests_json_with_low_reasoning():
     client.chat_json(messages=[{"role": "user", "content": "x"}])
 
     assert seen["response_format"] == {"type": "json_object"}
-    assert seen["reasoning_effort"] == "low"
+    assert seen["reasoning_effort"] == "low"  # economy is the default
+
+
+def test_chat_json_sends_no_reasoning_param_in_deep_mode(tmp_path, monkeypatch):
+    import app.utils.app_settings as app_settings
+    from app.utils.app_settings import set_setting
+    path = str(tmp_path / "s.json")
+    monkeypatch.setattr(app_settings, "_DEFAULT_PATH", path)
+    set_setting("think_level", "deep", path=path)
+
+    client = _client()
+    seen = {}
+
+    def fake_chat(**kwargs):
+        seen.update(kwargs)
+        return '{"ok": true}'
+
+    client.chat = fake_chat
+    client.chat_json(messages=[{"role": "user", "content": "x"}])
+
+    assert seen.get("reasoning_effort") is None  # provider-stock behavior
 
 
 def test_chat_json_raises_after_exhausting_retries():

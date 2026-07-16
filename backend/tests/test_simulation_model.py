@@ -1,24 +1,39 @@
-"""TDD: OASIS simulation agents run M3 with reduced reasoning.
+"""TDD: OASIS simulation agents' model config follows the think-level setting.
 
-The high-volume simulation loop (72 rounds x many agents) makes a model call
-per agent action. M3 spends ~80% of completion tokens on reasoning by default,
-which is wasted on simple post/like/comment decisions. reasoning_effort='low'
-roughly halves completion tokens while keeping a complete answer. The report
-agent keeps full reasoning via its own LLMClient path.
+经济 economy (default): reasoning_effort=low (cheap actions, MiniMax-validated).
+深度 deep: empty config — no thinking-control parameter, provider-stock
+behavior, compatible with any OpenAI-format API. The report agent is a
+separate path and always runs full depth regardless.
+
+Spec: docs/specs/2026-07-16-think-level-toggle-spec.md
 """
 import os
 
+import pytest
+
+import app.utils.app_settings as app_settings
+from app.utils.app_settings import set_setting
 from app.utils.simulation_model import simulation_model_config
 
 
-def test_simulation_agents_use_low_reasoning_effort():
-    cfg = simulation_model_config()
-    assert cfg["reasoning_effort"] == "low"
+@pytest.fixture()
+def settings_path(tmp_path, monkeypatch):
+    path = str(tmp_path / "app_settings.json")
+    monkeypatch.setattr(app_settings, "_DEFAULT_PATH", path)
+    return path
 
 
-def test_camel_model_factory_accepts_the_config():
-    # Proves camel's OpenAI backend accepts reasoning_effort and stores it,
-    # so the simulation scripts can pass it via model_config_dict.
+def test_economy_is_the_default_and_sets_low_reasoning(settings_path):
+    assert simulation_model_config() == {"reasoning_effort": "low"}
+
+
+def test_deep_sends_no_thinking_parameters(settings_path):
+    set_setting("think_level", "deep", path=settings_path)
+    assert simulation_model_config() == {}
+
+
+def test_camel_model_factory_accepts_the_economy_config(settings_path):
+    # Proves camel's OpenAI backend accepts reasoning_effort and stores it.
     os.environ.setdefault("OPENAI_API_KEY", "sk-test-key")
     from camel.models import ModelFactory
     from camel.types import ModelPlatformType

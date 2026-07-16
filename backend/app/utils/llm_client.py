@@ -103,6 +103,10 @@ class LLMClient:
         Returns:
             解析后的JSON对象
         """
+        # 思考深度设置：经济=低思考量（省token）；深度=不发送任何思考控制参数
+        from .app_settings import get_think_level
+        effort = "low" if get_think_level() == "economy" else None
+
         last_cleaned = ""
         for _ in range(max(1, max_retries)):
             response = self.chat(
@@ -110,7 +114,7 @@ class LLMClient:
                 temperature=temperature,
                 max_tokens=max_tokens,
                 response_format={"type": "json_object"},
-                reasoning_effort="low"
+                reasoning_effort=effort
             )
             # 清理 markdown 代码块标记
             cleaned = response.strip()

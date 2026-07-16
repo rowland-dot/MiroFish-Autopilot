@@ -1,18 +1,23 @@
 """Model configuration for the high-volume OASIS simulation agents.
 
-The simulation loop makes one model call per agent action across many rounds
-and agents. On a reasoning model like MiniMax-M3, ~80% of the completion
-tokens are reasoning the code then discards. `reasoning_effort="low"` roughly
-halves completion tokens per call while still returning a complete answer —
-a large cost cut with no model downgrade.
+Follows the deployment's 思考深度 (think level) setting:
 
-This is intentionally NOT applied to the report agent, which keeps full
-reasoning via its own LLMClient path (the high-value analysis output).
+- 经济 economy (default): reasoning_effort="low" — on a reasoning model like
+  MiniMax-M3 this roughly halves completion tokens per agent action with no
+  model downgrade (validated on MiniMax only).
+- 深度 deep: empty config — no thinking-control parameter is sent, so every
+  model behaves exactly as its provider intended (compatible with any
+  OpenAI-format API).
+
+The report agent is a separate path (LLMClient) and always runs full depth.
+Spec: docs/specs/2026-07-16-think-level-toggle-spec.md
 """
 
-SIMULATION_REASONING_EFFORT = "low"
+from .app_settings import get_think_level
 
 
 def simulation_model_config() -> dict:
-    """Return the model_config_dict for OASIS simulation agents."""
-    return {"reasoning_effort": SIMULATION_REASONING_EFFORT}
+    """Return the model_config_dict for OASIS simulation agents (read at call time)."""
+    if get_think_level() == "economy":
+        return {"reasoning_effort": "low"}
+    return {}
