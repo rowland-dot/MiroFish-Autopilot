@@ -74,6 +74,14 @@ def create_app(config_class=Config):
     app.register_blueprint(report_bp, url_prefix='/api/report')
     app.register_blueprint(settings_bp, url_prefix='/api/settings')
 
+    # 备份 / 恢复接口（受访问口令门保护）
+    from .api.backup import backup_bp
+    app.register_blueprint(backup_bp, url_prefix='/api')
+
+    # 每日自动备份到私有 HF Dataset（仅当配置了 BACKUP_HF_REPO + HF_TOKEN 时启动）
+    from .services.backup_scheduler import start_backup_scheduler
+    start_backup_scheduler(Config.UPLOAD_FOLDER)
+
     # 单容器部署：若存在已构建的前端（frontend/dist），由 Flask 同端口伺服
     from .static_site import init_static_site
     default_dist = os.path.join(os.path.dirname(__file__), '..', '..', 'frontend', 'dist')
