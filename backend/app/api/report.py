@@ -414,8 +414,18 @@ def download_report(report_id: str):
                 "error": t('api.reportNotFound', id=report_id)
             }), 404
 
+        # 下载名取原始上传文件名（report_<原文件名>.<格式>）；任一环节缺失则回退 report_<id>
+        source_filename = None
+        try:
+            state = SimulationManager().get_simulation(report.simulation_id)
+            project = ProjectManager.get_project(state.project_id) if state else None
+            if project and project.files:
+                source_filename = project.files[0].get('filename')
+        except Exception:
+            source_filename = None
+
         fmt = request.args.get('format', 'md')
-        data, download_name, mimetype = render_report_download(report, fmt)
+        data, download_name, mimetype = render_report_download(report, fmt, source_filename)
 
         return send_file(
             io.BytesIO(data),

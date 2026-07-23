@@ -39,8 +39,8 @@ def create_app(config_class=Config):
         logger.info("MiroFish Backend 启动中...")
         logger.info("=" * 50)
     
-    # 启用CORS
-    CORS(app, resources={r"/api/*": {"origins": "*"}})
+    # 启用CORS（暴露 Content-Disposition 供前端读取下载文件名）
+    CORS(app, resources={r"/api/*": {"origins": "*"}}, expose_headers=['Content-Disposition'])
 
     # 访问口令门（AUTH_ENABLED=true 时生效，保护页面与所有 /api/* 接口）
     from .auth import init_auth

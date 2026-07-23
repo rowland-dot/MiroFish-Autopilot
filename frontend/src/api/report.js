@@ -1,4 +1,5 @@
 import service, { requestWithRetry } from './index'
+import { filenameFromDisposition } from '../utils/downloadName'
 
 /**
  * 开始报告生成
@@ -51,14 +52,20 @@ export const chatWithReport = (data) => {
 }
 
 /**
- * 下载报告，返回 Blob（responseType:'blob' 会绕过 success 拦截器）
+ * 下载报告。用 fetch 以便读取服务端 Content-Disposition 中的真实文件名
+ * （report_<原始文件名>.<格式>）。
  * @param {string} reportId
  * @param {('md'|'docx')} format
- * @returns {Promise<Blob>}
+ * @returns {Promise<{blob: Blob, filename: string}>}
  */
-export const downloadReport = (reportId, format = 'md') => {
-  return service.get(`/api/report/${reportId}/download`, {
-    params: { format },
-    responseType: 'blob'
-  })
+export const downloadReport = async (reportId, format = 'md') => {
+  const base = service.defaults.baseURL || ''
+  const res = await fetch(`${base}/api/report/${reportId}/download?format=${format}`)
+  if (!res.ok) throw new Error(`download failed: ${res.status}`)
+  const blob = await res.blob()
+  const filename = filenameFromDisposition(
+    res.headers.get('content-disposition'),
+    `${reportId}.${format}`
+  )
+  return { blob, filename }
 }

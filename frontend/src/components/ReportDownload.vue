@@ -38,11 +38,11 @@ const onDownload = async (format) => {
   showMenu.value = false
   if (!props.reportId) return
   try {
-    const blob = await downloadReport(props.reportId, format)
+    const { blob, filename } = await downloadReport(props.reportId, format)
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `${props.reportId}.${format}`
+    a.download = filename // 服务端提供的真实名称：report_<原始文件名>.<格式>
     document.body.appendChild(a)
     a.click()
     a.remove()

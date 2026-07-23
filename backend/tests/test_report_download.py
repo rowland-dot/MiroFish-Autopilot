@@ -30,3 +30,23 @@ def test_md_is_the_default_when_format_missing():
 def test_unknown_format_falls_back_to_md():
     _, name, _ = render_report_download(_report(), "pdf")
     assert name.endswith(".md")
+
+
+def test_download_named_after_source_file_with_report_prefix():
+    # 上传 爆款详情页.docx → 下载 report_爆款详情页.docx / .md
+    _, name, _ = render_report_download(_report(), "docx", source_filename="爆款详情页.docx")
+    assert name == "report_爆款详情页.docx"
+    _, name_md, _ = render_report_download(_report(), "md", source_filename="爆款详情页.docx")
+    assert name_md == "report_爆款详情页.md"
+
+
+def test_source_extension_stripped_and_path_chars_sanitized():
+    _, name, _ = render_report_download(_report(), "docx", source_filename="a/b\\c: brief.v2.pdf")
+    assert name == "report_a_b_c_ brief.v2.docx"  # path/colon chars replaced, last ext stripped
+
+
+def test_blank_or_missing_source_falls_back_to_report_id():
+    _, name, _ = render_report_download(_report(), "docx", source_filename="   ")
+    assert name == "report_x.docx"
+    _, name2, _ = render_report_download(_report(), "docx", source_filename=None)
+    assert name2 == "report_x.docx"
