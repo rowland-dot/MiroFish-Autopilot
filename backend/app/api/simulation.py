@@ -971,7 +971,11 @@ def get_simulation_history():
                 sim_dict["created_date"] = ""
             
             enriched_simulations.append(sim_dict)
-        
+
+        # 最新的排在最前（此前为任意文件系统顺序）
+        from ..utils.history_sort import sort_by_created_desc
+        enriched_simulations = sort_by_created_desc(enriched_simulations)
+
         return jsonify({
             "success": True,
             "data": enriched_simulations,
