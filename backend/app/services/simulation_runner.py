@@ -228,6 +228,11 @@ class SimulationRunner:
     _graph_memory_enabled: Dict[str, bool] = {}  # simulation_id -> enabled
     
     @classmethod
+    def list_running(cls) -> list:
+        """返回当前仍有存活子进程的模拟ID列表（供部署安全闸门判断是否有任务在跑）。"""
+        return [sid for sid, p in cls._processes.items() if p and p.poll() is None]
+
+    @classmethod
     def get_run_state(cls, simulation_id: str) -> Optional[SimulationRunState]:
         """获取运行状态"""
         if simulation_id in cls._run_states:
@@ -785,7 +790,7 @@ class SimulationRunner:
         
         state.runner_status = RunnerStatus.STOPPING
         cls._save_run_state(state)
-        
+
         # 终止进程
         process = cls._processes.get(simulation_id)
         if process and process.poll() is None:

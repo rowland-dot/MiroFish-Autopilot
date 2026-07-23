@@ -20,6 +20,23 @@ JAR=$(mktemp)
 login() { curl -s -c "$JAR" -o /dev/null -X POST "$BASE/api/auth/login" \
   -H 'Content-Type: application/json' -d "{\"code\":\"$ACCESS_CODE\"}"; }
 
+echo "0/5  Checking for a running job (never disrupt one) ..."
+login
+BUSY=$(curl -s -b "$JAR" "$BASE/api/status" \
+  | python -c "import sys,json;print(json.load(sys.stdin).get('data',{}).get('busy'))" 2>/dev/null || echo "unknown")
+if [ "$BUSY" = "True" ] || [ "$BUSY" = "true" ]; then
+  echo "     ABORTED: a simulation or report job is currently running on the Space."
+  echo "     Deploying now would kill it. Re-run this deploy once the job finishes."
+  curl -s -b "$JAR" "$BASE/api/status"; echo
+  exit 3
+fi
+if [ "$BUSY" = "unknown" ]; then
+  echo "     WARNING: could not read /api/status (older version without it?)."
+  echo "     Confirm nothing is running before continuing, or Ctrl-C now."
+  sleep 5
+fi
+echo "     idle — safe to proceed."
+
 echo "1/5  Backing up live data from $BASE ..."
 if curl -s -o /dev/null -w '%{http_code}' "$BASE/api/backup" | grep -qE '200|401'; then
   login

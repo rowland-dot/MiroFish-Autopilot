@@ -78,6 +78,10 @@ def create_app(config_class=Config):
     from .api.backup import backup_bp
     app.register_blueprint(backup_bp, url_prefix='/api')
 
+    # 系统状态（是否有任务在跑）——部署安全闸门用
+    from .api.status import status_bp
+    app.register_blueprint(status_bp, url_prefix='/api')
+
     # 每日自动备份到私有 HF Dataset（仅当配置了 BACKUP_HF_REPO + HF_TOKEN 时启动）
     from .services.backup_scheduler import start_backup_scheduler
     start_backup_scheduler(Config.UPLOAD_FOLDER)
