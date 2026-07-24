@@ -10,6 +10,11 @@
 # Run from the repo root, on the branch you want to deploy (usually main).
 set -euo pipefail
 
+# Auto-load saved deploy credentials (gitignored, never pushed). Lets a plain
+# `bash scripts/deploy_hf.sh` run with zero prompts. Shell env still wins.
+DEPLOY_ENV="$(dirname "$0")/.deploy.env"
+if [ -f "$DEPLOY_ENV" ]; then set -a; . "$DEPLOY_ENV"; set +a; fi
+
 : "${HF_TOKEN:?set HF_TOKEN}" "${HF_SPACE:?set HF_SPACE}" "${ACCESS_CODE:?set ACCESS_CODE}"
 HOST=$(printf '%s' "$HF_SPACE" | tr '/' '-')
 BASE="https://${HOST}.hf.space"
