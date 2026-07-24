@@ -33,6 +33,12 @@ export function backfillSimId(q, tmpId, realSimId) {
   return { entries: q.entries.map(e => e._tmpId === tmpId ? { ...e, realSimId } : e) }
 }
 
+// Set status on the entry matching a real simulation_id (Step pages know the
+// sim id, not the temp id). Used to release a manual entry's slot.
+export function advanceBySimId(q, realSimId, status) {
+  return { entries: q.entries.map(e => e.realSimId === realSimId ? { ...e, status } : e) }
+}
+
 export function patchEntry(q, tmpId, patch) {
   return { entries: q.entries.map(e => e._tmpId === tmpId ? { ...e, ...patch } : e) }
 }
@@ -105,6 +111,7 @@ export const pipelineStore = {
   add: (entry) => mutate(q => enqueue(q, entry)),
   setStatus: (id, s) => mutate(q => advanceStatus(q, id, s)),
   setSimId: (id, sid) => mutate(q => backfillSimId(q, id, sid)),
+  setStatusBySimId: (sid, s) => mutate(q => advanceBySimId(q, sid, s)),
   patch: (id, p) => mutate(q => patchEntry(q, id, p)),
   cancel: (id) => mutate(q => cancel(q, id)),
   remove: (id) => mutate(q => remove(q, id)),

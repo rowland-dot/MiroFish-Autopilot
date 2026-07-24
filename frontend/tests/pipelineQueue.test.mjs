@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import {
   makeQueue, enqueue, activeEntry, isFull, capacityFull,
   advanceStatus, backfillSimId, cancel, remove, headToPromote,
-  mergeForDisplay, reconcileManual, ACTIVE_STATUSES,
+  mergeForDisplay, reconcileManual, advanceBySimId, ACTIVE_STATUSES,
   serialize, deserialize,
 } from '../src/store/pipelineQueue.js'
 
@@ -84,6 +84,16 @@ test('mergeForDisplay keeps optimistic entry not yet in server list', () => {
   assert.equal(merged.length, 1)
   assert.equal(merged[0]._tmpId, 'a')
   assert.equal(merged[0]._optimistic, true)
+})
+
+test('advanceBySimId sets status on the entry matching realSimId', () => {
+  let q = makeQueue()
+  q = enqueue(q, sub('m', { mode: 'manual' }))
+  q = backfillSimId(q, 'm', 'sim_x')
+  q = advanceBySimId(q, 'sim_x', 'done')
+  assert.equal(q.entries[0].status, 'done')
+  // no-op when no match
+  assert.equal(advanceBySimId(q, 'nope', 'running').entries[0].status, 'done')
 })
 
 test('serialize/deserialize round-trips through a storage string', () => {
