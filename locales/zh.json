@@ -332,6 +332,8 @@
     "deleting": "删除中…",
     "deleteFailed": "删除失败，请重试。",
     "queued": "排队中",
+    "running": "运行中",
+    "generating": "生成中",
     "waiting": "等待中",
     "cancelQueue": "取消排队",
     "graphBuild": "图谱构建",
