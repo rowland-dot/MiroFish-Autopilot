@@ -4,6 +4,7 @@ import {
   makeQueue, enqueue, activeEntry, isFull, capacityFull,
   advanceStatus, backfillSimId, cancel, remove, headToPromote,
   mergeForDisplay, reconcileManual, ACTIVE_STATUSES,
+  serialize, deserialize,
 } from '../src/store/pipelineQueue.js'
 
 const sub = (id, over = {}) => ({ _tmpId: id, prompt: 'p', fileName: 'x.docx', status: 'queued', realSimId: null, ...over })
@@ -83,6 +84,20 @@ test('mergeForDisplay keeps optimistic entry not yet in server list', () => {
   assert.equal(merged.length, 1)
   assert.equal(merged[0]._tmpId, 'a')
   assert.equal(merged[0]._optimistic, true)
+})
+
+test('serialize/deserialize round-trips through a storage string', () => {
+  let q = makeQueue()
+  q = enqueue(q, { _tmpId: 'a', prompt: 'p', fileB64: 'AQID', fileName: 'x.docx', fileType: '', realSimId: null })
+  const json = serialize(q)
+  const back = deserialize(json)
+  assert.equal(back.entries[0]._tmpId, 'a')
+  assert.equal(back.entries[0].fileB64, 'AQID')
+  assert.equal(back.entries[0].status, 'ontology')
+})
+
+test('deserialize tolerates garbage', () => {
+  assert.deepEqual(deserialize('not json').entries, [])
 })
 
 test('reconcileManual marks a finished manual entry done', () => {
