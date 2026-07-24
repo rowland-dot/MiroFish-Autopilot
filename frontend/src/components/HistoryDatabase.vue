@@ -29,6 +29,8 @@
         @mouseleave="hoveringCard = null"
         @click="navigateToProject(project)"
       >
+        <!-- 永久删除按钮（悬停显示，阻止冒泡以免打开项目） -->
+        <button class="card-delete" @click.stop="openDelete(project)" :title="$t('history.deleteCard')">🗑</button>
         <!-- 卡片头部：simulation_id 和 功能可用状态 -->
         <div class="card-header">
           <span class="card-id">{{ formatSimulationId(project.simulation_id) }}</span>
@@ -187,6 +189,22 @@
         </div>
       </Transition>
     </Teleport>
+
+    <!-- 永久删除确认弹窗 -->
+    <Teleport to="body">
+      <div v-if="deleteTarget" class="del-overlay" @click.self="cancelDelete">
+        <div class="del-dialog">
+          <div class="del-icon">🗑</div>
+          <h3 class="del-title">{{ $t('history.deleteTitle') }}</h3>
+          <p class="del-body">{{ $t('history.deleteBody') }}</p>
+          <p class="del-target">{{ formatSimulationId(deleteTarget.simulation_id) }}<template v-if="deleteTarget.files && deleteTarget.files.length"> · {{ deleteTarget.files[0].filename }}</template></p>
+          <div class="del-actions">
+            <button class="del-cancel" @click="cancelDelete" :disabled="deleting">{{ $t('history.deleteCancel') }}</button>
+            <button class="del-confirm" @click="confirmDelete" :disabled="deleting">{{ deleting ? $t('history.deleting') : $t('history.deleteConfirm') }}</button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
   </div>
 </template>
 
@@ -194,7 +212,7 @@
 import { ref, computed, onMounted, onUnmounted, onActivated, watch, nextTick } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { getSimulationHistory } from '../api/simulation'
+import { getSimulationHistory, deleteHistoryEntry } from '../api/simulation'
 
 const router = useRouter()
 const route = useRoute()
@@ -207,6 +225,28 @@ const isExpanded = ref(false)
 const hoveringCard = ref(null)
 const historyContainer = ref(null)
 const selectedProject = ref(null)  // 当前选中的项目（用于弹窗）
+
+// 永久删除
+const deleteTarget = ref(null)
+const deleting = ref(false)
+
+const openDelete = (project) => { deleteTarget.value = project }
+const cancelDelete = () => { if (!deleting.value) deleteTarget.value = null }
+const confirmDelete = async () => {
+  const target = deleteTarget.value
+  if (!target || deleting.value) return
+  deleting.value = true
+  try {
+    await deleteHistoryEntry(target.simulation_id)
+    projects.value = projects.value.filter(p => p.simulation_id !== target.simulation_id)
+    deleteTarget.value = null
+  } catch (e) {
+    // 删除失败保留弹窗，简单反馈
+    alert(t('history.deleteFailed'))
+  } finally {
+    deleting.value = false
+  }
+}
 let observer = null
 let isAnimating = false  // 动画锁，防止闪烁
 let expandDebounceTimer = null  // 防抖定时器
@@ -687,6 +727,133 @@ onUnmounted(() => {
   z-index: 1000 !important;
 }
 
+/* 永久删除按钮 */
+.card-delete {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 10;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid transparent;
+  background: transparent;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.2s ease, background 0.2s ease, border-color 0.2s ease;
+}
+
+.project-card:hover .card-delete {
+  opacity: 0.55;
+}
+
+.card-delete:hover {
+  opacity: 1;
+  background: #FEF2F2;
+  border-color: #FCA5A5;
+}
+
+/* 删除确认弹窗 */
+.del-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 20000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(17, 24, 39, 0.55);
+  backdrop-filter: blur(2px);
+}
+
+.del-dialog {
+  width: 380px;
+  max-width: calc(100vw - 40px);
+  background: #FFFFFF;
+  border: 1px solid #E5E7EB;
+  box-shadow: 0 20px 40px -8px rgba(0, 0, 0, 0.25);
+  padding: 28px 26px 22px;
+  text-align: center;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+}
+
+.del-icon {
+  font-size: 1.8rem;
+  margin-bottom: 10px;
+}
+
+.del-title {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #111827;
+  margin: 0 0 8px;
+  letter-spacing: 0.5px;
+}
+
+.del-body {
+  font-size: 0.82rem;
+  line-height: 1.5;
+  color: #6B7280;
+  margin: 0 0 12px;
+}
+
+.del-target {
+  font-size: 0.78rem;
+  color: #9CA3AF;
+  background: #F9FAFB;
+  border: 1px solid #F3F4F6;
+  padding: 8px 10px;
+  margin: 0 0 20px;
+  word-break: break-all;
+}
+
+.del-actions {
+  display: flex;
+  gap: 12px;
+}
+
+.del-cancel,
+.del-confirm {
+  flex: 1;
+  padding: 10px 0;
+  font-size: 0.82rem;
+  font-family: inherit;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  cursor: pointer;
+  border: 1px solid;
+  transition: background 0.2s ease, color 0.2s ease, opacity 0.2s ease;
+}
+
+.del-cancel {
+  background: #FFFFFF;
+  border-color: #D1D5DB;
+  color: #374151;
+}
+
+.del-cancel:hover {
+  background: #F3F4F6;
+}
+
+.del-confirm {
+  background: #DC2626;
+  border-color: #DC2626;
+  color: #FFFFFF;
+}
+
+.del-confirm:hover {
+  background: #B91C1C;
+  border-color: #B91C1C;
+}
+
+.del-cancel:disabled,
+.del-confirm:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
 /* 卡片头部 */
 .card-header {
   display: flex;
@@ -710,6 +877,12 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 6px;
+  transition: margin-right 0.2s ease;
+}
+
+/* 悬停显示删除按钮时，状态图标左移让位，避免重叠 */
+.project-card:hover .card-status-icons {
+  margin-right: 26px;
 }
 
 .status-icon {

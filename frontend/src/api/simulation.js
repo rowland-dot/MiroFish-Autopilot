@@ -185,3 +185,11 @@ export const getSimulationHistory = (limit = 20) => {
   return service.get('/api/simulation/history', { params: { limit } })
 }
 
+/**
+ * 永久删除一条历史记录（项目/模拟/报告 + 尽力删除 Zep 图谱）
+ * @param {string} simulationId
+ */
+export const deleteHistoryEntry = (simulationId) => {
+  return service.delete(`/api/simulation/history/${simulationId}`)
+}
+

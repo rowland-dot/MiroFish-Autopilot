@@ -12,6 +12,10 @@ from . import graph_bp
 from ..config import Config
 from ..services.ontology_generator import OntologyGenerator
 from ..services.graph_builder import GraphBuilderService
+from ..utils.graph_cache import TTLCache
+
+# 图谱数据短TTL缓存（部署级共享），降低 Zep 读取压力
+_graph_cache = TTLCache(ttl_seconds=30)
 from ..services.text_processor import TextProcessor
 from ..utils.file_parser import FileParser
 from ..utils.logger import get_logger
@@ -578,9 +582,20 @@ def get_graph_data(graph_id: str):
                 "error": t('api.zepApiKeyMissing')
             }), 500
         
+        # 图谱可视化开关关闭时：直接返回空，完全不调用 Zep（零读取）
+        from ..utils.app_settings import get_bool
+        if not get_bool('graph_viz_enabled'):
+            return jsonify({"success": True, "data": {"nodes": [], "edges": []}, "viz_disabled": True})
+
+        # 短TTL缓存：合并高频轮询/多用户，降低 Zep 读取（省额度+避免限流）
+        cached = _graph_cache.get(graph_id)
+        if cached is not None:
+            return jsonify({"success": True, "data": cached, "cached": True})
+
         builder = GraphBuilderService(api_key=Config.ZEP_API_KEY)
         graph_data = builder.get_graph_data(graph_id)
-        
+        _graph_cache.set(graph_id, graph_data)
+
         return jsonify({
             "success": True,
             "data": graph_data

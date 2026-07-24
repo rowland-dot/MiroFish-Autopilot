@@ -47,8 +47,10 @@ class GraphBuilderService:
         self.api_key = api_key or Config.ZEP_API_KEY
         if not self.api_key:
             raise ValueError("ZEP_API_KEY 未配置")
-        
-        self.client = Zep(api_key=self.api_key)
+
+        # 多账号密钥管理（配置了多个 Zep key 时用当前活跃 key；否则回退单 key）
+        from ..utils import zep_client
+        self.client = zep_client.active_client() or Zep(api_key=self.api_key)
         self.task_manager = TaskManager()
     
     def build_graph_async(
