@@ -23,6 +23,7 @@ from ..utils.logger import get_logger
 from ..utils.locale import get_locale, set_locale
 from .zep_graph_memory_updater import ZepGraphMemoryManager
 from .simulation_ipc import SimulationIPCClient, CommandType, IPCResponse
+from .simulation_queue import SimulationQueue
 
 logger = get_logger('mirofish.simulation_runner')
 
@@ -226,7 +227,65 @@ class SimulationRunner:
     
     # 图谱记忆更新配置
     _graph_memory_enabled: Dict[str, bool] = {}  # simulation_id -> enabled
-    
+
+    # 排队：一次只跑 SLOT_LIMIT 个（免费机内存只够一个），其余排队等待
+    _queue = SimulationQueue(slot_limit=1, queue_limit=2)
+    _submit_lock = threading.Lock()
+
+    # 传给 start_simulation 的参数字段（排队时保存，出队时回放）
+    _LAUNCH_KEYS = ("simulation_id", "platform", "max_rounds",
+                    "enable_graph_memory_update", "graph_id")
+
+    @classmethod
+    def _launch_kwargs(cls, payload: dict) -> dict:
+        return {k: payload.get(k) for k in cls._LAUNCH_KEYS}
+
+    @classmethod
+    def _mark_running_status(cls, simulation_id: str):
+        """出队启动后，把 SimulationManager 里的状态标为 RUNNING（与 /start 路由一致）。"""
+        try:
+            from .simulation_manager import SimulationManager, SimulationStatus
+            mgr = SimulationManager()
+            st = mgr.get_simulation(simulation_id)
+            if st:
+                st.status = SimulationStatus.RUNNING
+                mgr._save_simulation_state(st)
+        except Exception as e:
+            logger.warning(f"标记运行状态失败 {simulation_id}: {e}")
+
+    @classmethod
+    def submit_start(cls, payload: dict):
+        """决定立即启动 / 排队 / 拒绝。返回 (outcome, info)。
+        outcome ∈ {'started','queued','full'}。线程安全。"""
+        with cls._submit_lock:
+            running_count = len(cls.list_running())
+            decision = cls._queue.decide(running_count)
+            if decision == "full":
+                return "full", None
+            if decision == "queue":
+                cls._queue.enqueue(payload)
+                return "queued", cls._queue.size()
+            run_state = cls.start_simulation(**cls._launch_kwargs(payload))
+            return "started", run_state
+
+    @classmethod
+    def promote_next(cls):
+        """运行中的模拟结束后调用：若有空槽且队列非空，启动最旧的排队任务。"""
+        with cls._submit_lock:
+            if len(cls.list_running()) >= cls._queue.slot_limit:
+                return None
+            entry = cls._queue.dequeue()
+            if not entry:
+                return None
+            try:
+                run_state = cls.start_simulation(**cls._launch_kwargs(entry))
+                cls._mark_running_status(entry.get("simulation_id"))
+                logger.info(f"队列出队启动: {entry.get('simulation_id')}")
+                return run_state
+            except Exception as e:
+                logger.error(f"出队启动失败 {entry.get('simulation_id')}: {e}")
+                return None
+
     @classmethod
     def list_running(cls) -> list:
         """返回当前仍有存活子进程的模拟ID列表（供部署安全闸门判断是否有任务在跑）。"""
@@ -584,6 +643,12 @@ class SimulationRunner:
                 except Exception:
                     pass
                 cls._stderr_files.pop(simulation_id, None)
+
+            # 槽位已空——若有排队任务，自动启动最旧的一个（FIFO）
+            try:
+                cls.promote_next()
+            except Exception as e:
+                logger.error(f"promote_next 异常: {e}")
     
     @classmethod
     def _read_action_log(

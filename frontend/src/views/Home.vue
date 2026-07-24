@@ -263,12 +263,12 @@
             </div>
 
             <!-- 启动按钮：手动逐步 / 自动直达报告 -->
-            <div class="console-section btn-section">
+            <div class="console-section btn-section" :class="{ 'queue-full': capacityFull }">
               <div class="btn-row">
                 <button
                   class="start-engine-btn"
                   @click="startSimulation"
-                  :disabled="!canSubmit || loading"
+                  :disabled="!canSubmit || loading || capacityFull"
                 >
                   <span v-if="!loading">{{ $t('home.startEngine') }}</span>
                   <span v-else>{{ $t('home.initializing') }}</span>
@@ -277,12 +277,13 @@
                 <button
                   class="auto-run-btn"
                   @click="startAutoRun"
-                  :disabled="!canSubmit || loading"
+                  :disabled="!canSubmit || loading || capacityFull"
                 >
                   <span class="auto-main">⚡ {{ $t('home.autoRunBtn') }}</span>
                   <span class="auto-sub">{{ $t('home.autoRunSubtitle') }}</span>
                 </button>
               </div>
+              <div v-if="capacityFull" class="queue-full-hint">{{ $t('home.queueFullHint') }}</div>
               <div class="btn-hint">
                 <span class="h"><b>{{ $t('home.startEngine') }}</b>{{ $t('home.manualHint') }}</span>
                 <span class="h"><b>{{ $t('home.autoRunBtn') }}</b>{{ $t('home.autoHint') }}</span>
@@ -299,11 +300,11 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import HistoryDatabase from '../components/HistoryDatabase.vue'
 import LanguageSwitcher from '../components/LanguageSwitcher.vue'
-import { getSimulationHistory } from '../api/simulation'
+import { getSimulationHistory, getSystemStatus } from '../api/simulation'
 import { selectPrompts, addHidden, PROMPT_CAP } from '../utils/promptHistory'
 import { enableAutoPilot, disableAutoPilot } from '../utils/autoPilot'
 import { getSettings, updateSettings } from '../api/settings'
@@ -415,6 +416,25 @@ onMounted(async () => {
   } catch {
     // 读取失败保持默认显示，不影响页面其他功能
   }
+})
+
+// 队列容量：满时（1 运行 + 2 排队）禁用整个开始区，避免超载
+const capacityFull = ref(false)
+let capacityTimer = null
+const refreshCapacity = async () => {
+  try {
+    const res = await getSystemStatus()
+    capacityFull.value = !!((res.data || res).capacity_full)
+  } catch {
+    // 查询失败不禁用，保持可用
+  }
+}
+onMounted(() => {
+  refreshCapacity()
+  capacityTimer = setInterval(refreshCapacity, 5000)
+})
+onUnmounted(() => {
+  if (capacityTimer) { clearInterval(capacityTimer); capacityTimer = null }
 })
 
 // 文件列表
@@ -1113,6 +1133,19 @@ const launch = () => {
   cursor: not-allowed;
   transform: none;
 }
+/* 队列已满：整个开始区变暗 + 提示 */
+.btn-section.queue-full { opacity: 0.7; }
+.queue-full-hint {
+  margin-top: 10px;
+  padding: 8px 12px;
+  font-size: 0.72rem;
+  color: #D97706;
+  background: #FEF7EC;
+  border: 1px solid #F5C77E;
+  text-align: center;
+  letter-spacing: 0.5px;
+}
+
 .btn-hint {
   display: flex;
   gap: 12px; /* 与按钮行对齐 */
