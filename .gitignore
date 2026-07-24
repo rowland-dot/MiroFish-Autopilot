@@ -5,6 +5,7 @@ Thumbs.db
 # 环境变量（保护敏感信息）
 .env
 scripts/.deploy.env
+mirofish-backup-*.tar.gz
 .env.local
 .env.*.local
 .env.development
