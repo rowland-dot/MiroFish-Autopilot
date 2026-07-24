@@ -1773,47 +1773,39 @@ def start_simulation():
         )
         with graph_guard:
             if enable_graph_memory_update:
-                # Re-read both references under the same per-graph lock used
-                # by reset/delete, so check -> claim stays atomic.
-                refreshed_state = manager.get_simulation(simulation_id)
-                refreshed_project = (
-                    ProjectManager.get_project(refreshed_state.project_id)
-                    if refreshed_state
-                    else None
+                # Re-read both references under the same per-graph lock used by
+                # reset/delete, so check -> claim stays atomic. Shared with the
+                # queued-start path via SimulationRunner.validate_graph_start
+                # (single source of truth for both start sites).
+                ok, reason, refreshed_state = SimulationRunner.validate_graph_start(
+                    simulation_id, graph_id
                 )
-                current_graph_id = (
-                    refreshed_project.graph_id if refreshed_project else None
-                )
-                if current_graph_id != graph_id:
-                    return jsonify({
-                        "success": False,
-                        "error": (
+                if not ok:
+                    messages = {
+                        "missing": "The simulation no longer exists",
+                        "graph_changed": (
                             "The project graph changed while the simulation "
                             "was starting; retry after refreshing the project"
                         ),
-                    }), 409
-                if (
-                    refreshed_state.graph_id
-                    and refreshed_state.graph_id != current_graph_id
-                ):
-                    return jsonify({
-                        "success": False,
-                        "error": (
+                        "older_graph": (
                             "The simulation references an older graph; "
                             "prepare it again before enabling graph memory"
                         ),
-                    }), 409
-                active_reports = get_graph_readers(graph_id)
-                if active_reports:
-                    return jsonify({
-                        "success": False,
-                        "error": (
+                        "active_readers": (
                             "A report is currently reading this graph; wait "
                             "for report generation to finish before enabling "
                             "graph memory updates"
                         ),
-                        "active_reports": active_reports,
-                    }), 409
+                    }
+                    body = {
+                        "success": False,
+                        "error": messages.get(
+                            reason, "Graph is not ready for memory updates"
+                        ),
+                    }
+                    if reason == "active_readers":
+                        body["active_reports"] = get_graph_readers(graph_id)
+                    return jsonify(body), 409
                 state = refreshed_state
                 logger.info(
                     "启用图谱记忆更新: simulation_id=%s, graph_id=%s",

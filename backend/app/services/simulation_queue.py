@@ -45,6 +45,14 @@ class SimulationQueue:
                 return None
             return self._queue.pop(0)
 
+    def peek(self):
+        """Return the oldest entry without removing it, or None if empty.
+
+        Used by promote_next to read the next job's graph_id before acquiring
+        the per-graph lock (preserves graph->submit lock ordering)."""
+        with self._lock:
+            return self._queue[0] if self._queue else None
+
     def cancel(self, simulation_id: str) -> bool:
         """Remove a queued id (user pressed 取消排队). True if removed."""
         return self.remove(simulation_id)

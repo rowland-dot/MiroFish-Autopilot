@@ -282,22 +282,87 @@ class SimulationRunner:
             return "started", run_state
 
     @classmethod
+    def validate_graph_start(cls, simulation_id: str, expected_graph_id: str):
+        """图谱写入前的原子校验（调用方必须持有 graph_lifecycle_lock(expected_graph_id)）。
+
+        重读 state/project，确认图谱未变更且无活跃读取者。/start 立即路径与
+        promote_next 出队路径共用，保证两处校验逻辑一致（单一事实来源）。
+        返回 (ok: bool, reason: Optional[str], refreshed_state)。
+        reason ∈ {'missing','graph_changed','older_graph','active_readers'}。
+        """
+        from .simulation_manager import SimulationManager
+        from ..models.project import ProjectManager
+        from ..utils.zep_lifecycle import get_graph_readers
+
+        manager = SimulationManager()
+        refreshed_state = manager.get_simulation(simulation_id)
+        if refreshed_state is None:
+            return False, "missing", None
+
+        refreshed_project = ProjectManager.get_project(refreshed_state.project_id)
+        current_graph_id = refreshed_project.graph_id if refreshed_project else None
+        if current_graph_id != expected_graph_id:
+            return False, "graph_changed", refreshed_state
+        if refreshed_state.graph_id and refreshed_state.graph_id != current_graph_id:
+            return False, "older_graph", refreshed_state
+        if get_graph_readers(expected_graph_id):
+            return False, "active_readers", refreshed_state
+        return True, None, refreshed_state
+
+    @classmethod
     def promote_next(cls):
-        """运行中的模拟结束后调用：若有空槽且队列非空，启动最旧的排队任务。"""
+        """运行中的模拟结束后调用：若有空槽且队列非空，启动最旧的排队任务。
+
+        图谱写入并发安全：出队启动与 /start 立即路径一样，先在 per-graph 锁内做
+        原子重读校验（图谱是否变更 / 是否有活跃读取者），避免排队期间图谱状态改变
+        后仍写入陈旧图谱。锁顺序统一为 graph -> submit，避免与 /start 路径 ABBA 死锁。
+        """
+        from contextlib import nullcontext
+        from ..utils.zep_lifecycle import graph_lifecycle_lock
+
+        # Phase 1：仅读取队首（不出队），拿到 graph_id 以便按正确顺序取锁。
         with cls._submit_lock:
             if len(cls.list_running()) >= cls._queue.slot_limit:
                 return None
-            entry = cls._queue.dequeue()
+            entry = cls._queue.peek()
             if not entry:
                 return None
-            try:
-                run_state = cls.start_simulation(**cls._launch_kwargs(entry))
-                cls._mark_running_status(entry.get("simulation_id"))
-                logger.info(f"队列出队启动: {entry.get('simulation_id')}")
-                return run_state
-            except Exception as e:
-                logger.error(f"出队启动失败 {entry.get('simulation_id')}: {e}")
-                return None
+
+        sim_id = entry.get("simulation_id")
+        graph_id = entry.get("graph_id")
+        graph_write = bool(entry.get("enable_graph_memory_update")) and bool(graph_id)
+        guard = graph_lifecycle_lock(graph_id) if graph_write else nullcontext()
+
+        # Phase 2：graph 锁（外）-> submit 锁（内），与 /start 路径同序。
+        with guard:
+            with cls._submit_lock:
+                if len(cls.list_running()) >= cls._queue.slot_limit:
+                    return None  # 等锁期间槽位被占，让下次 promote 处理
+                current = cls._queue.peek()
+                if not current or current.get("simulation_id") != sim_id:
+                    return None  # 队列在解锁期间变化（取消/删除），交给下次
+                if graph_write:
+                    ok, reason, _ = cls.validate_graph_start(sim_id, graph_id)
+                    if not ok:
+                        cls._queue.dequeue()  # 丢弃已失效的排队项
+                        cls._sync_simulation_status(
+                            sim_id,
+                            RunnerStatus.FAILED,
+                            error=f"queued graph-memory start aborted: {reason}",
+                        )
+                        logger.warning(
+                            "出队启动被图谱校验拒绝: sim=%s reason=%s", sim_id, reason
+                        )
+                        return None
+                entry = cls._queue.dequeue()
+                try:
+                    run_state = cls.start_simulation(**cls._launch_kwargs(entry))
+                    cls._mark_running_status(sim_id)
+                    logger.info(f"队列出队启动: {sim_id}")
+                    return run_state
+                except Exception as e:
+                    logger.error(f"出队启动失败 {sim_id}: {e}")
+                    return None
 
     @classmethod
     def list_running(cls) -> list:
