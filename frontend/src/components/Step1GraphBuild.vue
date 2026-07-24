@@ -192,6 +192,7 @@ import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { createSimulation } from '../api/simulation'
 import { isAutoPilot } from '../utils/autoPilot'
+import { pipelineStore } from '../store/pipelineQueue'
 
 const router = useRouter()
 const { t } = useI18n()
@@ -229,6 +230,13 @@ const handleEnterEnvSetup = async () => {
     })
     
     if (res.success && res.data?.simulation_id) {
+      // 手动流程：把真实 sim_id 回填到当前活跃的手动乐观卡片（用于占槽 + 后续释放）
+      try {
+        const active = pipelineStore.active.value
+        if (active && active.mode === 'manual' && !active.realSimId) {
+          pipelineStore.setSimId(active._tmpId, res.data.simulation_id)
+        }
+      } catch { /* store 不可用不阻断 */ }
       // 跳转到 simulation 页面
       router.push({
         name: 'Simulation',

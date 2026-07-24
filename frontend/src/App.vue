@@ -4,6 +4,13 @@
 
 <script setup>
 // 使用 Vue Router 来管理页面
+// 全局流水线驱动器：跨页面存活，自动推进排队中的自动驾驶项目
+import { onMounted } from 'vue'
+import { startDriver } from './services/pipelineDriver'
+
+onMounted(() => {
+  startDriver()
+})
 </script>
 
 <style>

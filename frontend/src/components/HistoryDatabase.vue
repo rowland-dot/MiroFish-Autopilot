@@ -18,19 +18,21 @@
     </div>
 
     <!-- 卡片容器（只在有项目时显示） -->
-    <div v-if="projects.length > 0" class="cards-container" :class="{ expanded: isExpanded }" :style="containerStyle">
-      <div 
-        v-for="(project, index) in projects" 
-        :key="project.simulation_id"
+    <div v-if="displayProjects.length > 0" class="cards-container" :class="{ expanded: isExpanded }" :style="containerStyle">
+      <div
+        v-for="(project, index) in displayProjects"
+        :key="project.simulation_id || project._tmpId"
         class="project-card"
-        :class="{ expanded: isExpanded, hovering: hoveringCard === index, queued: isCardQueued(project) }"
+        :class="{ expanded: isExpanded, hovering: hoveringCard === index, queued: isCardQueued(project), running: isCardRunning(project), generating: isCardGenerating(project) }"
         :style="getCardStyle(index)"
         @mouseenter="hoveringCard = index"
         @mouseleave="hoveringCard = null"
         @click="navigateToProject(project)"
       >
-        <!-- 排队中徽标（id ∈ 服务器队列，非按轮数推断） -->
-        <span v-if="isCardQueued(project)" class="card-queued-badge">{{ $t('history.queued') }}</span>
+        <!-- 状态徽标（右上角）：运行中 / 生成中 / 排队中 -->
+        <span v-if="isCardRunning(project)" class="card-run-badge">{{ $t('history.running') }}</span>
+        <span v-else-if="isCardGenerating(project)" class="card-gen-badge">{{ $t('history.generating') }}</span>
+        <span v-else-if="isCardQueued(project)" class="card-queued-badge">{{ $t('history.queued') }}</span>
         <!-- 永久删除按钮（悬停显示，阻止冒泡以免打开项目） -->
         <button class="card-delete" @click.stop="openDelete(project)" :title="$t('history.deleteCard')">🗑</button>
         <!-- 卡片头部：simulation_id 和 功能可用状态 -->
@@ -96,12 +98,15 @@
           <span v-if="isCardQueued(project)" class="card-progress queued">
             <span class="status-dot">●</span> {{ $t('history.waiting') }}
           </span>
+          <span v-else-if="isCardGenerating(project)" class="card-progress generating">
+            <span class="status-dot">●</span> {{ $t('history.generating') }}
+          </span>
           <span v-else class="card-progress" :class="getProgressClass(project)">
             <span class="status-dot">●</span> {{ formatRounds(project) }}
           </span>
         </div>
 
-        <!-- 取消排队按钮（仅排队中卡片） -->
+        <!-- 取消排队按钮（排队中卡片：乐观走本地 store，真实走后端） -->
         <button
           v-if="isCardQueued(project)"
           class="card-cancel-queue"
@@ -226,31 +231,49 @@ import { useRouter, useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { getSimulationHistory, deleteHistoryEntry, getSystemStatus, cancelQueuedSimulation } from '../api/simulation'
 import { isQueued } from '../utils/queueState'
+import { pipelineStore } from '../store/pipelineQueue'
+import { mergeForDisplay } from '../store/pipelineQueue'
+import { driverTick } from '../services/pipelineDriver'
 
 const router = useRouter()
 const route = useRoute()
 const { t } = useI18n()
 
-// 状态
+// 状态：projects = 服务器历史；displayProjects = 服务器 + 乐观卡片合并
 const projects = ref([])
+const displayProjects = computed(() => mergeForDisplay(projects.value, pipelineStore.raw()))
 
-// 排队状态（来自 /api/status）——卡片据 id ∈ queued 判定排队中
+// 运行/排队状态（来自 /api/status）——卡片据 id ∈ running / queued 判定
 const queuedIds = ref([])
+const runningIds = ref([])
 let queuePollTimer = null
 
-const isCardQueued = (project) => isQueued(project.simulation_id, queuedIds.value)
+const GEN_STATUSES = ['ontology', 'building', 'creating', 'preparing']
+// 状态优先级：store 状态优先（乐观卡片），其次 /api/status 的 id
+const isCardQueued = (project) =>
+  project.status === 'queued' || isQueued(project.simulation_id, queuedIds.value)
+const isCardRunning = (project) =>
+  project.status === 'running' || isQueued(project.simulation_id, runningIds.value)
+const isCardGenerating = (project) =>
+  !!project._optimistic && GEN_STATUSES.includes(project.status)
 
 const refreshQueueState = async () => {
   try {
     const res = await getSystemStatus()
     const d = res.data || res
     queuedIds.value = (d && d.queued_simulations) || []
+    runningIds.value = (d && d.running_simulations) || []
   } catch (e) {
     // 静默：状态查询失败不影响卡片渲染
   }
 }
 
 const cancelQueue = async (project) => {
+  // 乐观（尚无 sim_id）→ 本地 store 取消；真实排队 → 后端取消
+  if (project._optimistic) {
+    pipelineStore.cancel(project._tmpId)
+    return
+  }
   try {
     await cancelQueuedSimulation(project.simulation_id)
     queuedIds.value = queuedIds.value.filter(id => id !== project.simulation_id)
@@ -259,6 +282,9 @@ const cancelQueue = async (project) => {
     // 忽略；下次轮询会自动纠正
   }
 }
+
+// R3：驱动器每次阶段转换 -> 重新拉取历史（乐观卡片翻转为真实记录）
+watch(driverTick, () => { loadHistory() })
 const loading = ref(true)
 const isExpanded = ref(false)
 const hoveringCard = ref(null)
@@ -478,8 +504,9 @@ const truncateFilename = (filename, maxLength) => {
   return truncatedName + ext
 }
 
-// 打开项目详情弹窗
+// 打开项目详情弹窗（乐观卡片尚无真实记录时不打开空弹窗）
 const navigateToProject = (simulation) => {
+  if (simulation._optimistic && !simulation.simulation_id) return  // 生成中，尚无可查看内容
   selectedProject.value = simulation
 }
 
@@ -804,6 +831,34 @@ onUnmounted(() => {
   background: #FEF2F2;
   border-color: #FCA5A5;
 }
+
+/* 运行中 / 生成中 徽标（复用排队中徽标的角标形状） */
+.project-card.running { border-color: #86EFAC; }
+.project-card.generating { border-color: #93C5FD; }
+.card-run-badge, .card-gen-badge {
+  position: absolute;
+  top: 0;
+  right: 0;
+  z-index: 9;
+  font-size: 9px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  font-weight: 600;
+  padding: 3px 8px;
+}
+.card-run-badge {
+  color: #16A34A;
+  background: #ECFDF3;
+  border-left: 1px solid #16A34A;
+  border-bottom: 1px solid #16A34A;
+}
+.card-gen-badge {
+  color: #2563EB;
+  background: #EFF4FE;
+  border-left: 1px solid #2563EB;
+  border-bottom: 1px solid #2563EB;
+}
+.card-progress.generating { color: #2563EB; }
 
 /* 排队中：卡片徽标 + 取消按钮 */
 .project-card.queued { border-color: #FCA5A5; }

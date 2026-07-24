@@ -332,6 +332,8 @@
     "deleting": "Deleting…",
     "deleteFailed": "Delete failed. Please try again.",
     "queued": "Queued",
+    "running": "Running",
+    "generating": "Generating",
     "waiting": "Waiting",
     "cancelQueue": "Cancel queue",
     "graphBuild": "Graph Build",

@@ -263,12 +263,12 @@
             </div>
 
             <!-- 启动按钮：手动逐步 / 自动直达报告 -->
-            <div class="console-section btn-section" :class="{ 'queue-full': capacityFull }">
+            <div class="console-section btn-section" :class="{ 'queue-full': atCapacity }">
               <div class="btn-row">
                 <button
                   class="start-engine-btn"
                   @click="startSimulation"
-                  :disabled="!canSubmit || loading || capacityFull"
+                  :disabled="!canSubmit || loading || atCapacity"
                 >
                   <span v-if="!loading">{{ $t('home.startEngine') }}</span>
                   <span v-else>{{ $t('home.initializing') }}</span>
@@ -277,13 +277,13 @@
                 <button
                   class="auto-run-btn"
                   @click="startAutoRun"
-                  :disabled="!canSubmit || loading || capacityFull"
+                  :disabled="!canSubmit || loading || atCapacity"
                 >
                   <span class="auto-main">⚡ {{ $t('home.autoRunBtn') }}</span>
                   <span class="auto-sub">{{ $t('home.autoRunSubtitle') }}</span>
                 </button>
               </div>
-              <div v-if="capacityFull" class="queue-full-hint">{{ $t('home.queueFullHint') }}</div>
+              <div v-if="atCapacity" class="queue-full-hint">{{ $t('home.queueFullHint') }}</div>
               <div class="btn-hint">
                 <span class="h"><b>{{ $t('home.startEngine') }}</b>{{ $t('home.manualHint') }}</span>
                 <span class="h"><b>{{ $t('home.autoRunBtn') }}</b>{{ $t('home.autoHint') }}</span>
@@ -308,6 +308,8 @@ import { getSimulationHistory, getSystemStatus } from '../api/simulation'
 import { selectPrompts, addHidden, PROMPT_CAP } from '../utils/promptHistory'
 import { enableAutoPilot, disableAutoPilot } from '../utils/autoPilot'
 import { getSettings, updateSettings } from '../api/settings'
+import { pipelineStore } from '../store/pipelineQueue'
+import { fileToB64 } from '../store/fileCodec'
 
 const router = useRouter()
 
@@ -419,7 +421,9 @@ onMounted(async () => {
 })
 
 // 队列容量：满时（1 运行 + 2 排队）禁用整个开始区，避免超载
+// 前端 store 是同步权威闸门；/api/status 作为二级保险
 const capacityFull = ref(false)
+const atCapacity = computed(() => capacityFull.value || pipelineStore.capacityFull.value)
 let capacityTimer = null
 const refreshCapacity = async () => {
   try {
@@ -507,20 +511,39 @@ const scrollToBottom = () => {
   })
 }
 
-// 开始模拟 - 立即跳转，API调用在Process页面进行
-const startSimulation = () => {
-  if (!canSubmit.value || loading.value) return
-
-  // 手动模式：清掉可能残留的自动驾驶标记，确保行为与以往完全一致
-  disableAutoPilot()
-  launch()
+let _tmpSeq = 0
+// 点击即在历史列表插入一张「生成中」乐观卡片（自动+手动都插）。持久化到
+// localStorage（base64 文件），刷新/切页都在。
+const enqueueInstantCard = async (mode) => {
+  const file = files.value[0]
+  const enc = await fileToB64(file)
+  const tmpId = `tmp_${Date.now()}_${_tmpSeq++}`
+  pipelineStore.add({
+    _tmpId: tmpId,
+    mode,
+    prompt: formData.value.simulationRequirement,
+    file,
+    fileB64: enc.b64, fileName: enc.name, fileType: enc.type,
+    createdAt: new Date().toISOString(),
+    status: 'queued',
+    projectId: null, buildTaskId: null, graphId: null, realSimId: null,
+  })
+  return tmpId
 }
 
-// 自动直达报告：设置自动驾驶标记后走完全相同的启动流程
-const startAutoRun = () => {
-  if (!canSubmit.value || loading.value) return
+// 开始模拟（手动）- 立即插卡 + 跳转，逐步由 Step 页面驱动
+const startSimulation = async () => {
+  if (!canSubmit.value || loading.value || pipelineStore.capacityFull.value) return
+  disableAutoPilot()
+  await enqueueInstantCard('manual')
+  launch()                                   // 手动仍进入分步流程
+}
+
+// 自动直达报告 - 立即插卡，留在首页，由 app 级驱动器无人值守推进
+const startAutoRun = async () => {
+  if (!canSubmit.value || loading.value || pipelineStore.capacityFull.value) return
   enableAutoPilot()
-  launch()
+  await enqueueInstantCard('auto')           // 不跳转：留在首页可继续排队
 }
 
 const launch = () => {

@@ -289,6 +289,7 @@
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
+import { pipelineStore } from '../store/pipelineQueue'
 import {
   startSimulation,
   stopSimulation,
@@ -430,7 +431,10 @@ const doStartSimulation = async () => {
       
       phase.value = 1
       runStatus.value = res.data
-      
+
+      // 手动流程：标记该 sim 的乐观卡片为运行中（reconcile 据此在完成后释放槽位）
+      try { pipelineStore.setStatusBySimId(props.simulationId, 'running') } catch { /* ignore */ }
+
       startStatusPolling()
       startDetailPolling()
     } else {
@@ -559,11 +563,13 @@ const fetchRunStatus = async () => {
         addLog(t('log.simFailed') + (data.error ? `: ${data.error}` : ''))
         phase.value = 2
         stopPolling()
+        try { pipelineStore.setStatusBySimId(props.simulationId, 'done') } catch { /* ignore */ }
         emit('update-status', 'error')
       } else if (isCompleted) {
         addLog(t('log.simCompleted'))
         phase.value = 2
         stopPolling()
+        try { pipelineStore.setStatusBySimId(props.simulationId, 'done') } catch { /* ignore */ }
         emit('update-status', 'completed')
       }
     }
