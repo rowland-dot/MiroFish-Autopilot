@@ -282,11 +282,17 @@ class SimulationRunner:
             return "started", run_state
 
     @classmethod
-    def validate_graph_start(cls, simulation_id: str, expected_graph_id: str):
+    def validate_graph_start(
+        cls, simulation_id: str, expected_graph_id: str, *,
+        manager=None, project_manager=None, graph_readers=None,
+    ):
         """图谱写入前的原子校验（调用方必须持有 graph_lifecycle_lock(expected_graph_id)）。
 
         重读 state/project，确认图谱未变更且无活跃读取者。/start 立即路径与
         promote_next 出队路径共用，保证两处校验逻辑一致（单一事实来源）。
+
+        依赖可注入（manager / project_manager / graph_readers）：/start 处理器传入
+        自己已就绪的引用，promote_next 走默认真实实现。
         返回 (ok: bool, reason: Optional[str], refreshed_state)。
         reason ∈ {'missing','graph_changed','older_graph','active_readers'}。
         """
@@ -294,18 +300,21 @@ class SimulationRunner:
         from ..models.project import ProjectManager
         from ..utils.zep_lifecycle import get_graph_readers
 
-        manager = SimulationManager()
+        manager = manager or SimulationManager()
+        project_manager = project_manager or ProjectManager
+        graph_readers = graph_readers or get_graph_readers
+
         refreshed_state = manager.get_simulation(simulation_id)
         if refreshed_state is None:
             return False, "missing", None
 
-        refreshed_project = ProjectManager.get_project(refreshed_state.project_id)
+        refreshed_project = project_manager.get_project(refreshed_state.project_id)
         current_graph_id = refreshed_project.graph_id if refreshed_project else None
         if current_graph_id != expected_graph_id:
             return False, "graph_changed", refreshed_state
         if refreshed_state.graph_id and refreshed_state.graph_id != current_graph_id:
             return False, "older_graph", refreshed_state
-        if get_graph_readers(expected_graph_id):
+        if graph_readers(expected_graph_id):
             return False, "active_readers", refreshed_state
         return True, None, refreshed_state
 

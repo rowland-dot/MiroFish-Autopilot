@@ -147,6 +147,15 @@ def test_failed_ingestion_cannot_generate_a_report_after_restart(monkeypatch):
 
 
 def test_report_reader_lease_blocks_graph_start_and_delete(monkeypatch):
+    # Hybrid control: open the deployment-level graph-memory gate so the
+    # request param takes effect (otherwise the master switch forces it off).
+    import app.utils.app_settings as _app_settings
+    _real_get_bool = _app_settings.get_bool
+    monkeypatch.setattr(
+        _app_settings, "get_bool",
+        lambda key, path=None: True if key == "graph_memory_update_enabled"
+        else _real_get_bool(key, path),
+    )
     simulation = SimpleNamespace(
         simulation_id="sim-1",
         project_id="proj-1",

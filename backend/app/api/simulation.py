@@ -1622,11 +1622,13 @@ def start_simulation():
 
         platform = data.get('platform', 'parallel')
         max_rounds = data.get('max_rounds')  # 可选：最大模拟轮数
-        # 图谱记忆更新由部署级设置统一控制（默认关闭，省 Zep 额度）；前端参数仅作回退
+        # 图谱记忆更新：混合控制。部署级设置是总开关（默认关闭，省 Zep 额度）；
+        # 总开关允许时，尊重前端请求参数；总开关关闭时强制不写图谱，无论前端请求为何。
         from ..utils.app_settings import get_bool
-        enable_graph_memory_update = get_bool('graph_memory_update_enabled')
+        deployment_allows_graph_memory = get_bool('graph_memory_update_enabled')
+        requested_graph_memory = data.get('enable_graph_memory_update', False)
         force = data.get('force', False)  # 可选：强制重新开始
-        if not isinstance(enable_graph_memory_update, bool):
+        if not isinstance(requested_graph_memory, bool):
             return jsonify({
                 "success": False,
                 "error": "enable_graph_memory_update must be a JSON boolean",
@@ -1636,6 +1638,10 @@ def start_simulation():
                 "success": False,
                 "error": "force must be a JSON boolean",
             }), 400
+        # 总开关关闭 → 强制关闭；开启 → 由前端请求决定。
+        enable_graph_memory_update = (
+            deployment_allows_graph_memory and requested_graph_memory
+        )
 
         # 验证 max_rounds 参数
         if max_rounds is not None:
@@ -1778,7 +1784,10 @@ def start_simulation():
                 # queued-start path via SimulationRunner.validate_graph_start
                 # (single source of truth for both start sites).
                 ok, reason, refreshed_state = SimulationRunner.validate_graph_start(
-                    simulation_id, graph_id
+                    simulation_id, graph_id,
+                    manager=manager,
+                    project_manager=ProjectManager,
+                    graph_readers=get_graph_readers,
                 )
                 if not ok:
                     messages = {

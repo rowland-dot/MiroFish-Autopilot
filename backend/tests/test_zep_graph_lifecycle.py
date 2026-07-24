@@ -331,6 +331,15 @@ def test_force_must_be_a_json_boolean(monkeypatch):
 def test_graph_reset_and_memory_start_cannot_cross_between_delete_and_clear(
     monkeypatch,
 ):
+    # Hybrid control: open the deployment-level graph-memory gate so the
+    # request param takes effect (otherwise the master switch forces it off).
+    import app.utils.app_settings as _app_settings
+    _real_get_bool = _app_settings.get_bool
+    monkeypatch.setattr(
+        _app_settings, "get_bool",
+        lambda key, path=None: True if key == "graph_memory_update_enabled"
+        else _real_get_bool(key, path),
+    )
     project = _project(ProjectStatus.GRAPH_COMPLETED)
     simulation = SimpleNamespace(
         simulation_id="sim-1",
