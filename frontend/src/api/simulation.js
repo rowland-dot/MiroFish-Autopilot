@@ -193,3 +193,18 @@ export const deleteHistoryEntry = (simulationId) => {
   return service.delete(`/api/simulation/history/${simulationId}`)
 }
 
+/**
+ * 系统状态（运行中 + 排队中 + 是否满）——用于卡片排队徽标与开始区禁用
+ */
+export const getSystemStatus = () => {
+  return service.get('/api/status')
+}
+
+/**
+ * 取消排队：把模拟移出队列，恢复为未开始（不删除数据）
+ * @param {string} simulationId
+ */
+export const cancelQueuedSimulation = (simulationId) => {
+  return service.post(`/api/simulation/queue/${simulationId}/cancel`)
+}
+

@@ -998,6 +998,12 @@ def delete_history_entry(simulation_id: str):
         from ..utils.history_delete import delete_history_records
         from ..services.graph_builder import GraphBuilderService
 
+        # B7：若在排队中，先移出队列，避免出队时启动一个配置已被删的任务
+        try:
+            SimulationRunner._queue.remove(simulation_id)
+        except Exception:
+            pass
+
         # 若正在运行，先停止其进程，避免删目录时进程还在写
         try:
             SimulationRunner.stop_simulation(simulation_id)
@@ -1027,6 +1033,28 @@ def delete_history_entry(simulation_id: str):
         return jsonify({"success": False, "error": str(e)}), 400
     except Exception as e:
         logger.error(f"删除历史记录失败: {str(e)}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@simulation_bp.route('/queue/<simulation_id>/cancel', methods=['POST'])
+def cancel_queued_simulation(simulation_id: str):
+    """取消排队：把模拟移出队列，恢复为「未开始」(READY)。不删除数据。"""
+    try:
+        removed = SimulationRunner._queue.cancel(simulation_id)
+        if not removed:
+            return jsonify({"success": False, "error": t('api.notInQueue')}), 404
+        # 恢复为可再次启动的就绪态
+        try:
+            manager = SimulationManager()
+            state = manager.get_simulation(simulation_id)
+            if state:
+                state.status = SimulationStatus.READY
+                manager._save_simulation_state(state)
+        except Exception as e:
+            logger.warning(f"取消排队后重置状态失败 {simulation_id}: {e}")
+        return jsonify({"success": True, "data": {"simulation_id": simulation_id, "cancelled": True}})
+    except Exception as e:
+        logger.error(f"取消排队失败: {str(e)}")
         return jsonify({"success": False, "error": str(e)}), 500
 
 
@@ -1645,19 +1673,40 @@ def start_simulation():
             
             logger.info(f"启用图谱记忆更新: simulation_id={simulation_id}, graph_id={graph_id}")
         
-        # 启动模拟
-        run_state = SimulationRunner.start_simulation(
-            simulation_id=simulation_id,
-            platform=platform,
-            max_rounds=max_rounds,
-            enable_graph_memory_update=enable_graph_memory_update,
-            graph_id=graph_id
-        )
-        
+        # 提交到排队器：空槽立即启动 / 有任务在跑则排队 / 满则拒绝
+        payload = {
+            "simulation_id": simulation_id,
+            "platform": platform,
+            "max_rounds": max_rounds,
+            "enable_graph_memory_update": enable_graph_memory_update,
+            "graph_id": graph_id,
+        }
+        outcome, info = SimulationRunner.submit_start(payload)
+
+        if outcome == "full":
+            return jsonify({
+                "success": False,
+                "error": t('api.queueFull'),
+                "code": "queue_full",
+            }), 409
+
+        if outcome == "queued":
+            return jsonify({
+                "success": True,
+                "data": {
+                    "simulation_id": simulation_id,
+                    "queued": True,
+                    "queue_position": info,
+                },
+            })
+
+        # outcome == "started"
+        run_state = info
+
         # 更新模拟状态
         state.status = SimulationStatus.RUNNING
         manager._save_simulation_state(state)
-        
+
         response_data = run_state.to_dict()
         if max_rounds:
             response_data['max_rounds_applied'] = max_rounds

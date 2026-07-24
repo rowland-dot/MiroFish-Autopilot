@@ -24,11 +24,15 @@ def system_status():
     except Exception:
         statuses = []
     active_tasks = [s for s in statuses if s in _ACTIVE]
+    queued = SimulationRunner._queue.ids()
     return jsonify({
         "success": True,
         "data": {
             "busy": is_busy(running, statuses),
             "running_simulations": running,
             "active_tasks": len(active_tasks),
+            # 排队器：等待中的模拟 id（有序）+ 是否已满（前端据此禁用开始区）
+            "queued_simulations": queued,
+            "capacity_full": SimulationRunner._queue.capacity_full(len(running)),
         }
     })

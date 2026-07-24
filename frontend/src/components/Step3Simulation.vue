@@ -292,6 +292,7 @@ import { useI18n } from 'vue-i18n'
 import {
   startSimulation,
   stopSimulation,
+  getSystemStatus,
   getRunStatus,
   getRunStatusDetail
 } from '../api/simulation'
@@ -411,7 +412,15 @@ const doStartSimulation = async () => {
     addLog(t('log.graphMemoryUpdateEnabled'))
     
     const res = await startSimulation(params)
-    
+
+    // 排队：有任务在跑时，本次进入队列，等待自动接力
+    if (res.success && res.data && res.data.queued) {
+      addLog(t('log.queued'))
+      isStarting.value = false
+      waitForPromotion()
+      return
+    }
+
     if (res.success && res.data) {
       if (res.data.force_restarted) {
         addLog(t('log.oldSimCleared'))
@@ -484,6 +493,34 @@ const stopPolling = () => {
     clearInterval(detailTimer)
     detailTimer = null
   }
+  if (promoTimer) {
+    clearInterval(promoTimer)
+    promoTimer = null
+  }
+}
+
+// 排队等待：轮询 /api/status，本模拟出队开始运行后无缝转入运行流程
+let promoTimer = null
+const waitForPromotion = () => {
+  if (promoTimer) return
+  promoTimer = setInterval(async () => {
+    try {
+      const res = await getSystemStatus()
+      const d = res.data || res
+      const running = (d && d.running_simulations) || []
+      if (running.includes(props.simulationId)) {
+        clearInterval(promoTimer); promoTimer = null
+        addLog(t('log.queuePromoted'))
+        phase.value = 1
+        const rs = await getRunStatus(props.simulationId)
+        runStatus.value = (rs && rs.data) || {}
+        startStatusPolling()
+        startDetailPolling()
+      }
+    } catch (e) {
+      // 静默重试
+    }
+  }, 4000)
 }
 
 // 追踪各平台的上一次轮次，用于检测变化并输出日志

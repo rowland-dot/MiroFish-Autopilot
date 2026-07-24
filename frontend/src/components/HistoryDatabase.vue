@@ -23,12 +23,14 @@
         v-for="(project, index) in projects" 
         :key="project.simulation_id"
         class="project-card"
-        :class="{ expanded: isExpanded, hovering: hoveringCard === index }"
+        :class="{ expanded: isExpanded, hovering: hoveringCard === index, queued: isCardQueued(project) }"
         :style="getCardStyle(index)"
         @mouseenter="hoveringCard = index"
         @mouseleave="hoveringCard = null"
         @click="navigateToProject(project)"
       >
+        <!-- 排队中徽标（id ∈ 服务器队列，非按轮数推断） -->
+        <span v-if="isCardQueued(project)" class="card-queued-badge">{{ $t('history.queued') }}</span>
         <!-- 永久删除按钮（悬停显示，阻止冒泡以免打开项目） -->
         <button class="card-delete" @click.stop="openDelete(project)" :title="$t('history.deleteCard')">🗑</button>
         <!-- 卡片头部：simulation_id 和 功能可用状态 -->
@@ -91,11 +93,21 @@
             <span class="card-date">{{ formatDate(project.created_at) }}</span>
             <span class="card-time">{{ formatTime(project.created_at) }}</span>
           </div>
-          <span class="card-progress" :class="getProgressClass(project)">
+          <span v-if="isCardQueued(project)" class="card-progress queued">
+            <span class="status-dot">●</span> {{ $t('history.waiting') }}
+          </span>
+          <span v-else class="card-progress" :class="getProgressClass(project)">
             <span class="status-dot">●</span> {{ formatRounds(project) }}
           </span>
         </div>
-        
+
+        <!-- 取消排队按钮（仅排队中卡片） -->
+        <button
+          v-if="isCardQueued(project)"
+          class="card-cancel-queue"
+          @click.stop="cancelQueue(project)"
+        >{{ $t('history.cancelQueue') }}</button>
+
         <!-- 底部装饰线 (hover时展开) -->
         <div class="card-bottom-line"></div>
       </div>
@@ -212,7 +224,8 @@
 import { ref, computed, onMounted, onUnmounted, onActivated, watch, nextTick } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { getSimulationHistory, deleteHistoryEntry } from '../api/simulation'
+import { getSimulationHistory, deleteHistoryEntry, getSystemStatus, cancelQueuedSimulation } from '../api/simulation'
+import { isQueued } from '../utils/queueState'
 
 const router = useRouter()
 const route = useRoute()
@@ -220,6 +233,32 @@ const { t } = useI18n()
 
 // 状态
 const projects = ref([])
+
+// 排队状态（来自 /api/status）——卡片据 id ∈ queued 判定排队中
+const queuedIds = ref([])
+let queuePollTimer = null
+
+const isCardQueued = (project) => isQueued(project.simulation_id, queuedIds.value)
+
+const refreshQueueState = async () => {
+  try {
+    const res = await getSystemStatus()
+    const d = res.data || res
+    queuedIds.value = (d && d.queued_simulations) || []
+  } catch (e) {
+    // 静默：状态查询失败不影响卡片渲染
+  }
+}
+
+const cancelQueue = async (project) => {
+  try {
+    await cancelQueuedSimulation(project.simulation_id)
+    queuedIds.value = queuedIds.value.filter(id => id !== project.simulation_id)
+    await refreshQueueState()
+  } catch (e) {
+    // 忽略；下次轮询会自动纠正
+  }
+}
 const loading = ref(true)
 const isExpanded = ref(false)
 const hoveringCard = ref(null)
@@ -584,7 +623,10 @@ onMounted(async () => {
   // 确保 DOM 渲染完成后再加载数据
   await nextTick()
   await loadHistory()
-  
+  await refreshQueueState()
+  // 排队状态轮询（结束/出队后卡片自动翻转）
+  queuePollTimer = setInterval(refreshQueueState, 5000)
+
   // 等待 DOM 渲染后初始化观察器
   setTimeout(() => {
     initObserver()
@@ -597,6 +639,7 @@ onActivated(() => {
 })
 
 onUnmounted(() => {
+  if (queuePollTimer) { clearInterval(queuePollTimer); queuePollTimer = null }
   // 清理 Intersection Observer
   if (observer) {
     observer.disconnect()
@@ -755,6 +798,40 @@ onUnmounted(() => {
   background: #FEF2F2;
   border-color: #FCA5A5;
 }
+
+/* 排队中：卡片徽标 + 取消按钮 */
+.project-card.queued { border-color: #FCA5A5; }
+.card-queued-badge {
+  position: absolute;
+  top: 0;
+  right: 0;
+  z-index: 9;
+  font-size: 9px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  font-weight: 600;
+  color: #D97706;
+  background: #FEF7EC;
+  border-left: 1px solid #D97706;
+  border-bottom: 1px solid #D97706;
+  padding: 3px 8px;
+}
+.card-progress.queued { color: #D97706; }
+.card-cancel-queue {
+  margin-top: 10px;
+  width: 100%;
+  padding: 6px;
+  font-family: inherit;
+  font-size: 10px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: #D97706;
+  background: transparent;
+  border: 1px dashed #D97706;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+.card-cancel-queue:hover { background: #FEF7EC; }
 
 /* 删除确认弹窗 */
 .del-overlay {
