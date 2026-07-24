@@ -82,6 +82,10 @@ def create_app(config_class=Config):
     from .api.status import status_bp
     app.register_blueprint(status_bp, url_prefix='/api')
 
+    # 多 Zep 账号密钥管理（ZEP_API_KEY(, ZEP_API_KEY_2, …)）——额度耗尽自动切换
+    from .utils import zep_client
+    zep_client.init_manager(os.environ)
+
     # 每日自动备份到私有 HF Dataset（仅当配置了 BACKUP_HF_REPO + HF_TOKEN 时启动）
     from .services.backup_scheduler import start_backup_scheduler
     start_backup_scheduler(Config.UPLOAD_FOLDER)

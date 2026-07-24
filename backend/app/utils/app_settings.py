@@ -47,3 +47,17 @@ def get_think_level(path: str = None) -> str:
     """Current think level; unknown/missing values sanitize to the default."""
     value = get_setting("think_level", DEFAULT_THINK_LEVEL, path=path)
     return value if value in THINK_LEVELS else DEFAULT_THINK_LEVEL
+
+
+# 布尔型运行时设置及默认值（部署级）
+BOOL_SETTINGS = {
+    "graph_memory_update_enabled": False,  # 模拟每轮写回图谱（默认关闭，省 Zep 额度）
+    "graph_viz_enabled": True,             # 前端展示实时图谱（可关闭以省 Zep 读取）
+}
+
+
+def get_bool(key: str, path: str = None) -> bool:
+    """Read a known bool setting, sanitised to its default."""
+    default = BOOL_SETTINGS.get(key, False)
+    value = get_setting(key, default, path=path)
+    return value if isinstance(value, bool) else bool(default)

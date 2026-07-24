@@ -282,7 +282,7 @@ const startGraphRefresh = () => {
   if (graphRefreshTimer) return
   addLog(t('log.graphRealtimeRefreshStart'))
   // 立即刷新一次，然后每30秒刷新
-  graphRefreshTimer = setInterval(refreshGraph, 30000)
+  graphRefreshTimer = setInterval(refreshGraph, 60000)  // 降低 Zep 读取频率
 }
 
 const stopGraphRefresh = () => {

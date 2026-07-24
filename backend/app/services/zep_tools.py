@@ -427,7 +427,8 @@ class ZepToolsService:
         if not self.api_key:
             raise ValueError("ZEP_API_KEY 未配置")
         
-        self.client = Zep(api_key=self.api_key)
+        from ..utils import zep_client
+        self.client = zep_client.active_client() or Zep(api_key=self.api_key)
         # LLM客户端用于InsightForge生成子问题
         self._llm_client = llm_client
         logger.info(t("console.zepToolsInitialized"))

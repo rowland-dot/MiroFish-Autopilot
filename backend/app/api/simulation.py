@@ -991,6 +991,45 @@ def get_simulation_history():
         }), 500
 
 
+@simulation_bp.route('/history/<simulation_id>', methods=['DELETE'])
+def delete_history_entry(simulation_id: str):
+    """永久删除一条历史记录：项目/模拟/报告本地目录 + 尽力删除 Zep 图谱。"""
+    try:
+        from ..utils.history_delete import delete_history_records
+        from ..services.graph_builder import GraphBuilderService
+
+        # 若正在运行，先停止其进程，避免删目录时进程还在写
+        try:
+            SimulationRunner.stop_simulation(simulation_id)
+        except Exception:
+            pass
+
+        state = SimulationManager().get_simulation(simulation_id)
+        project_id = getattr(state, 'project_id', None) if state else None
+        graph_id = None
+        if project_id:
+            project = ProjectManager.get_project(project_id)
+            graph_id = getattr(project, 'graph_id', None) if project else None
+        report_id = _get_report_id_for_simulation(simulation_id)
+
+        def _zep_delete(gid):
+            GraphBuilderService(api_key=Config.ZEP_API_KEY).delete_graph(gid)
+
+        result = delete_history_records(
+            Config.UPLOAD_FOLDER, simulation_id,
+            project_id=project_id, report_id=report_id, graph_id=graph_id,
+            zep_delete=_zep_delete,
+        )
+        logger.info(f"删除历史记录 {simulation_id}: {result}")
+        return jsonify({"success": True, "data": result})
+
+    except ValueError as e:
+        return jsonify({"success": False, "error": str(e)}), 400
+    except Exception as e:
+        logger.error(f"删除历史记录失败: {str(e)}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
 @simulation_bp.route('/<simulation_id>/profiles', methods=['GET'])
 def get_simulation_profiles(simulation_id: str):
     """
@@ -1505,7 +1544,9 @@ def start_simulation():
 
         platform = data.get('platform', 'parallel')
         max_rounds = data.get('max_rounds')  # 可选：最大模拟轮数
-        enable_graph_memory_update = data.get('enable_graph_memory_update', False)  # 可选：是否启用图谱记忆更新
+        # 图谱记忆更新由部署级设置统一控制（默认关闭，省 Zep 额度）；前端参数仅作回退
+        from ..utils.app_settings import get_bool
+        enable_graph_memory_update = get_bool('graph_memory_update_enabled')
         force = data.get('force', False)  # 可选：强制重新开始
 
         # 验证 max_rounds 参数

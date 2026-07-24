@@ -250,6 +250,16 @@
                 <span class="tl-hint">{{ thinkLevel === 'economy' ? $t('home.thinkLevelEconomyHint') : $t('home.thinkLevelDeepHint') }}</span>
                 <span v-if="thinkLevelSaved" class="tl-saved">✓ {{ $t('home.thinkLevelSaved') }}</span>
               </div>
+              <!-- 实时图谱开关（关闭可省 Zep 读取额度；不影响报告质量） -->
+              <div class="think-level" style="margin-top:8px;">
+                <span class="tl-label">{{ $t('home.graphVizLabel') }}</span>
+                <div class="tl-seg">
+                  <button class="tl-opt" :class="{ active: graphVizEnabled }" @click="setGraphViz(true)">📊 {{ $t('home.graphVizOn') }}</button>
+                  <button class="tl-opt" :class="{ active: !graphVizEnabled }" @click="setGraphViz(false)">🚫 {{ $t('home.graphVizOff') }}</button>
+                </div>
+                <span class="tl-hint">{{ $t('home.graphVizHint') }}</span>
+                <span v-if="graphVizSaved" class="tl-saved">✓ {{ $t('home.thinkLevelSaved') }}</span>
+              </div>
             </div>
 
             <!-- 启动按钮：手动逐步 / 自动直达报告 -->
@@ -378,12 +388,32 @@ const setThinkLevel = async (level) => {
   }
 }
 
+// 实时图谱开关（部署级）
+const graphVizEnabled = ref(true)
+const graphVizSaved = ref(false)
+let vizSavedTimer = null
+
+const setGraphViz = async (enabled) => {
+  if (enabled === graphVizEnabled.value) return
+  const previous = graphVizEnabled.value
+  graphVizEnabled.value = enabled
+  try {
+    await updateSettings({ graph_viz_enabled: enabled })
+    graphVizSaved.value = true
+    clearTimeout(vizSavedTimer)
+    vizSavedTimer = setTimeout(() => { graphVizSaved.value = false }, 2000)
+  } catch {
+    graphVizEnabled.value = previous
+  }
+}
+
 onMounted(async () => {
   try {
     const res = await getSettings()
     if (res.data?.think_level) thinkLevel.value = res.data.think_level
+    if (typeof res.data?.graph_viz_enabled === 'boolean') graphVizEnabled.value = res.data.graph_viz_enabled
   } catch {
-    // 读取失败保持默认显示（economy），不影响页面其他功能
+    // 读取失败保持默认显示，不影响页面其他功能
   }
 })
 
@@ -1106,8 +1136,9 @@ const launch = () => {
 .tl-opt {
   border: 0; border-radius: 6px; padding: 7px 16px; font-size: 12px;
   font-weight: 600; color: #666; background: transparent; cursor: pointer;
-  display: flex; align-items: center; gap: 6px; white-space: nowrap;
-  font-family: inherit;
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  white-space: nowrap; font-family: inherit;
+  min-width: 88px;  /* 两行开关按钮宽度一致 */
 }
 .tl-opt.active { background: #fff; color: #000; box-shadow: 0 1px 4px rgba(0,0,0,.10); }
 .tl-opt.active.eco { color: #C2410C; }
