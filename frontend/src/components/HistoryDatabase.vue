@@ -249,11 +249,16 @@ const runningIds = ref([])
 let queuePollTimer = null
 
 const GEN_STATUSES = ['ontology', 'building', 'creating', 'preparing']
-// 状态优先级：store 状态优先（乐观卡片），其次 /api/status 的 id
+// 乐观卡片用 store 状态；真实历史记录只信 /api/status 的实时 id，
+// 绝不用服务器记录里的 status 字段（那可能是过期的，会误报运行中）。
 const isCardQueued = (project) =>
-  project.status === 'queued' || isQueued(project.simulation_id, queuedIds.value)
+  project._optimistic
+    ? project.status === 'queued'
+    : isQueued(project.simulation_id, queuedIds.value)
 const isCardRunning = (project) =>
-  project.status === 'running' || isQueued(project.simulation_id, runningIds.value)
+  project._optimistic
+    ? project.status === 'running'
+    : isQueued(project.simulation_id, runningIds.value)
 const isCardGenerating = (project) =>
   !!project._optimistic && GEN_STATUSES.includes(project.status)
 
