@@ -12,6 +12,29 @@ def _seed(root):
     os.makedirs(root, exist_ok=True)
     with open(os.path.join(root, "app_settings.json"), "w", encoding="utf-8") as f:
         f.write("{}")
+    # real data so the backup is worth taking
+    simdir = os.path.join(root, "simulations", "sim_x")
+    os.makedirs(simdir, exist_ok=True)
+    with open(os.path.join(simdir, "run_state.json"), "w", encoding="utf-8") as f:
+        f.write("{}")
+
+
+def test_run_backup_once_skips_empty_disk(tmp_path):
+    # freshly-wiped disk (only app_settings.json, no simulations/reports) ->
+    # do NOT upload an empty backup and do NOT record state (so the next
+    # hour, once data exists, a real backup is taken).
+    data = tmp_path / "uploads"
+    os.makedirs(str(data), exist_ok=True)
+    with open(os.path.join(str(data), "app_settings.json"), "w", encoding="utf-8") as f:
+        f.write("{}")
+    state = tmp_path / ".last_backup"
+    calls = []
+    did = run_backup_once(str(data), "me/backups", "hf_tok", str(state),
+                          now=datetime(2026, 7, 23, 12, 0, 0),
+                          upload=lambda *a, **k: calls.append(1))
+    assert did is False
+    assert calls == []          # nothing uploaded
+    assert not state.exists()   # slot not consumed
 
 
 def test_scheduler_is_noop_without_env(tmp_path, monkeypatch):

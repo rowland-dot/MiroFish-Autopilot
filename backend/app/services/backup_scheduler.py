@@ -30,8 +30,21 @@ def _hf_upload(archive: bytes, repo: str, token: str, path: str) -> None:
     )
 
 
+def _has_backup_worthy_data(data_dir) -> bool:
+    """真实数据存在才值得备份：simulations/reports/projects 下有任意文件。
+    刚被 deploy 抹掉的空盘（仅 app_settings.json）不备份，避免上传 173 字节空包
+    并白白占用当日备份名额（.last_backup 也在盘上，会随 deploy 一起被清）。"""
+    for sub in ("simulations", "reports", "projects"):
+        d = os.path.join(data_dir, sub)
+        if os.path.isdir(d):
+            for _root, _dirs, files in os.walk(d):
+                if files:
+                    return True
+    return False
+
+
 def run_backup_once(data_dir, repo, token, state_path, now=None, upload=_hf_upload) -> bool:
-    """距上次备份满 24h 则执行一次备份上传；否则跳过。返回是否执行。"""
+    """距上次备份满 24h 且盘上有真实数据则备份上传；否则跳过。返回是否执行。"""
     now = now or datetime.now()
     last = None
     try:
@@ -41,6 +54,8 @@ def run_backup_once(data_dir, repo, token, state_path, now=None, upload=_hf_uplo
         last = None
     if not should_backup(last, now):
         return False
+    if not _has_backup_worthy_data(data_dir):
+        return False  # 空盘不备份、不记名额
 
     archive = make_backup_bytes(data_dir)
     path = f"backups/mirofish-{now.strftime('%Y%m%d-%H%M%S')}.tar.gz"

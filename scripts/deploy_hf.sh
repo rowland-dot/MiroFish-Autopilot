@@ -47,12 +47,18 @@ echo "1/5  Backing up live data from $BASE ..."
 # VALID backup first, we ABORT — never proceed without one (that once
 # destroyed a completed run). Override only with ALLOW_NO_BACKUP=1 after a
 # deliberate decision that nothing on the Space needs keeping.
-login
-curl -s -b "$JAR" "$BASE/api/backup" -o "$BK" 2>/dev/null || true
-# A valid backup is a real gzip tar with >0 data entries. Empty/broken
-# backups (e.g. a 173-byte stub or an HTML error page) do NOT count.
-BEFORE=$(tar -tzf "$BK" 2>/dev/null | grep -cE 'simulations/|projects/|reports/' || echo 0)
-BK_SIZE=$(wc -c < "$BK" 2>/dev/null || echo 0)
+# Retry through transient HF gateway flakiness (500/503) before deciding.
+# A single flaky check must never be read as "no backup" (that once wiped a run).
+BEFORE=0; BK_SIZE=0
+for attempt in 1 2 3 4 5; do
+  login
+  curl -s -b "$JAR" "$BASE/api/backup" -o "$BK" 2>/dev/null || true
+  BEFORE=$(tar -tzf "$BK" 2>/dev/null | grep -cE 'simulations/|projects/|reports/' || echo 0)
+  BK_SIZE=$(wc -c < "$BK" 2>/dev/null || echo 0)
+  [ "$BEFORE" -ge 1 ] && [ "$BK_SIZE" -ge 1024 ] && break
+  echo "     backup attempt $attempt: entries=$BEFORE size=$BK_SIZE — retrying (HF may be flaky) ..."
+  sleep 10
+done
 if [ "$BEFORE" -lt 1 ] || [ "$BK_SIZE" -lt 1024 ]; then
   if [ "${ALLOW_NO_BACKUP:-0}" = "1" ]; then
     echo "     WARNING: no valid backup (entries=$BEFORE size=$BK_SIZE) but ALLOW_NO_BACKUP=1 — proceeding."
