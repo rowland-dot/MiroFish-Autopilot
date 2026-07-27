@@ -249,6 +249,13 @@ const runningIds = ref([])
 let queuePollTimer = null
 
 const GEN_STATUSES = ['ontology', 'building', 'creating', 'preparing', 'reporting']
+// 已跑满轮次 = 完成（即使 OASIS 环境仍被挂起，/api/status 仍会把它列为 running）。
+// 卡片按「实际进度」判定运行中，而非「进程是否存活」，否则完成后仍误报运行中。
+const isRecordComplete = (project) => {
+  const c = project.current_round || 0
+  const t = project.total_rounds || 0
+  return t > 0 && c >= t
+}
 // 乐观卡片用 store 状态；真实历史记录只信 /api/status 的实时 id，
 // 绝不用服务器记录里的 status 字段（那可能是过期的，会误报运行中）。
 const isCardQueued = (project) =>
@@ -258,7 +265,7 @@ const isCardQueued = (project) =>
 const isCardRunning = (project) =>
   project._optimistic
     ? project.status === 'running'
-    : isQueued(project.simulation_id, runningIds.value)
+    : (isQueued(project.simulation_id, runningIds.value) && !isRecordComplete(project))
 const isCardGenerating = (project) =>
   !!project._optimistic && GEN_STATUSES.includes(project.status)
 
