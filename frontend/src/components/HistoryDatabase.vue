@@ -1,11 +1,11 @@
 <template>
   <div 
     class="history-database"
-    :class="{ 'no-projects': projects.length === 0 && !loading }"
+    :class="{ 'no-projects': displayProjects.length === 0 && !loading }"
     ref="historyContainer"
   >
     <!-- 背景装饰：技术网格线（只在有项目时显示） -->
-    <div v-if="projects.length > 0 || loading" class="tech-grid-bg">
+    <div v-if="displayProjects.length > 0 || loading" class="tech-grid-bg">
       <div class="grid-pattern"></div>
       <div class="gradient-overlay"></div>
     </div>
@@ -336,7 +336,7 @@ const containerStyle = computed(() => {
   }
   
   // 展开态：根据卡片数量动态计算高度
-  const total = projects.value.length
+  const total = displayProjects.value.length
   if (total === 0) {
     return { minHeight: '280px' }
   }
@@ -350,7 +350,7 @@ const containerStyle = computed(() => {
 
 // 获取卡片样式
 const getCardStyle = (index) => {
-  const total = projects.value.length
+  const total = displayProjects.value.length
   
   if (isExpanded.value) {
     // 展开态：网格布局
