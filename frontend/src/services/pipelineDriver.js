@@ -66,6 +66,16 @@ export async function runOne(entry, deps, inFlight = new Set()) {
         rs = ((await api.getRunStatus(simId)).data || {}).runner_status
         if (!TERMINAL_RUN.includes(rs)) await sleep(2000)
       } while (!TERMINAL_RUN.includes(rs))
+    }
+
+    // report (Step 4) — auto-pilot means "auto to report", so the driver
+    // kicks report generation after the run. Best-effort: a report failure
+    // does not fail the whole pipeline (the run + graph still succeeded).
+    {
+      store.setStatus(id, 'reporting'); signal()
+      try {
+        await api.generateReport({ simulation_id: simId, force_regenerate: true })
+      } catch (e) { /* report is best-effort */ }
       store.setStatus(id, 'done'); signal()
     }
   } catch (e) {
@@ -97,7 +107,8 @@ export async function startDriver() {
   }))
   const graph = await import('../api/graph.js')
   const sim = await import('../api/simulation.js')
-  const api = { ...graph, ...sim }
+  const report = await import('../api/report.js')
+  const api = { ...graph, ...sim, ...report }
   const sleep = (ms) => new Promise(r => setTimeout(r, ms))
   const signal = () => { bumpTick() }
   const deps = { api, store: pipelineStore, sleep, signal, buildFormData }

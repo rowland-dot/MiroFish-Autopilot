@@ -4,7 +4,7 @@
 // Pure functions first, then a reactive singleton + localStorage layer.
 import { reactive, computed } from 'vue'
 
-export const ACTIVE_STATUSES = ['ontology', 'building', 'creating', 'preparing', 'running']
+export const ACTIVE_STATUSES = ['ontology', 'building', 'creating', 'preparing', 'running', 'reporting']
 const SLOT_LIMIT = 1
 const QUEUE_LIMIT = 2
 const FIRST_ACTIVE = 'ontology'

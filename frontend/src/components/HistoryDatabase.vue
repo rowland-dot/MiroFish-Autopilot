@@ -248,7 +248,7 @@ const queuedIds = ref([])
 const runningIds = ref([])
 let queuePollTimer = null
 
-const GEN_STATUSES = ['ontology', 'building', 'creating', 'preparing']
+const GEN_STATUSES = ['ontology', 'building', 'creating', 'preparing', 'reporting']
 // 乐观卡片用 store 状态；真实历史记录只信 /api/status 的实时 id，
 // 绝不用服务器记录里的 status 字段（那可能是过期的，会误报运行中）。
 const isCardQueued = (project) =>

@@ -13,6 +13,7 @@ function mockApi(calls) {
     getPrepareStatus: async () => ({ data: { status: 'completed' } }),
     startSimulation: async () => (calls.push('start'), { data: { runner_status: 'running' } }),
     getRunStatus: async () => ({ data: { runner_status: 'completed' } }),
+    generateReport: async () => (calls.push('report'), { data: { report_id: 'rep_1' } }),
   }
 }
 // non-reused build path: buildGraph returns a task -> poll -> getProject
@@ -35,15 +36,15 @@ test('runOne advances through the full sequence and backfills sim id', async () 
   const calls = []
   const d = deps(mockApi(calls))
   await runOne({ _tmpId: 't1', file: {}, prompt: 'p' }, d)
-  assert.deepEqual(calls, ['ontology', 'build', 'create', 'prepare', 'start'])
+  assert.deepEqual(calls, ['ontology', 'build', 'create', 'prepare', 'start', 'report'])
   assert.equal(d._rec.sid, 'sim_1')                                  // backfilled
-  assert.deepEqual(d._rec.statuses, ['building', 'creating', 'preparing', 'running', 'done'])
+  assert.deepEqual(d._rec.statuses, ['building', 'creating', 'preparing', 'running', 'reporting', 'done'])
 })
 
 test('runOne polls the non-reused build task + prepare task', async () => {
   const calls = []
   await runOne({ _tmpId: 't2', file: {}, prompt: 'p' }, deps(mockApiPolling(calls)))
-  assert.deepEqual(calls, ['ontology', 'build', 'create', 'prepare', 'start'])
+  assert.deepEqual(calls, ['ontology', 'build', 'create', 'prepare', 'start', 'report'])
 })
 
 test('a second tick does not re-enter runOne for an in-flight entry', async () => {
@@ -64,5 +65,5 @@ test('a second tick does not re-enter runOne for an in-flight entry', async () =
 test('runOne resumes from create when graphId already present (no rebuild)', async () => {
   const calls = []
   await runOne({ _tmpId: 't4', file: {}, prompt: 'p', projectId: 'proj_1', graphId: 'g1' }, deps(mockApi(calls)))
-  assert.deepEqual(calls, ['create', 'prepare', 'start'])   // skipped ontology + build
+  assert.deepEqual(calls, ['create', 'prepare', 'start', 'report'])   // skipped ontology + build
 })
