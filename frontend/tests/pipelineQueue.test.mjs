@@ -17,6 +17,13 @@ test('pruneFinished drops done + failed, keeps active/queued', () => {
   assert.deepEqual(pruneFinished(q).entries.map(e => e._tmpId), ['c', 'd'])
 })
 
+test('mergeForDisplay exposes projectId for routing a generating card', () => {
+  const q = { entries: [{ _tmpId: 'x', status: 'building', realSimId: null, projectId: 'proj_1', fileName: 'f', prompt: 'p' }] }
+  const card = mergeForDisplay([], q)[0]
+  assert.equal(card._projectId, 'proj_1')
+  assert.equal(card.simulation_id, null)
+})
+
 test('mergeForDisplay hides failed ghosts', () => {
   const q = { entries: [{ _tmpId: 'x', status: 'failed', realSimId: null, fileName: 'f', prompt: 'p' }] }
   assert.equal(mergeForDisplay([], q).length, 0)

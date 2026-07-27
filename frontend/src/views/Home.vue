@@ -575,7 +575,10 @@ const startSimulation = async () => {
 // 自动直达报告 - 立即插卡，留在首页，由 app 级驱动器无人值守推进
 const startAutoRun = async () => {
   if (!canSubmit.value || loading.value || pipelineStore.capacityFull.value) return
-  enableAutoPilot()
+  // app 级驱动器负责推进整条流水线；不再设置旧的自动驾驶标记——否则用户点进
+  // 步骤页时页面也会自动推进，与驱动器重复触发（双跑 = OOM）。标记关闭后步骤页
+  // 只读展示，可安全点进查看进度。
+  disableAutoPilot()
   await enqueueInstantCard('auto')           // 不跳转：留在首页可继续排队
 }
 

@@ -77,6 +77,7 @@ export function mergeForDisplay(serverList, q) {
     .filter(e => !(e.realSimId && serverIds.has(e.realSimId)))
     .map(e => ({
       _optimistic: true, _tmpId: e._tmpId, simulation_id: e.realSimId || null,
+      _projectId: e.projectId || null,
       status: e.status, files: [{ filename: e.fileName }],
       simulation_requirement: e.prompt, created_at: e.createdAt,
     }))

@@ -509,9 +509,21 @@ const truncateFilename = (filename, maxLength) => {
   return truncatedName + ext
 }
 
-// 打开项目详情弹窗（乐观卡片尚无真实记录时不打开空弹窗）
+// 点进卡片查看实时进度。乐观卡片（生成中/运行中）按当前阶段跳转到对应实时页面；
+// 真实历史记录仍打开详情弹窗。步骤页在自动驾驶标记关闭时只读展示，安全可看。
 const navigateToProject = (simulation) => {
-  if (simulation._optimistic && !simulation.simulation_id) return  // 生成中，尚无可查看内容
+  if (simulation._optimistic) {
+    const simId = simulation.simulation_id
+    if (simulation.status === 'running' && simId) {
+      router.push({ name: 'SimulationRun', params: { simulationId: simId } })   // 运行轮次页
+    } else if (simId) {
+      router.push({ name: 'Simulation', params: { simulationId: simId } })      // 环境/画像页
+    } else if (simulation._projectId) {
+      router.push({ name: 'Process', params: { projectId: simulation._projectId } })  // 图谱构建页
+    }
+    // 更早（ontology 阶段，尚无 project_id）：暂无可看内容，忽略点击
+    return
+  }
   selectedProject.value = simulation
 }
 
