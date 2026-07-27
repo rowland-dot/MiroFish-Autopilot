@@ -3,17 +3,21 @@
 Spec: docs/specs/2026-07-16-think-level-toggle-spec.md
 """
 
+import os
+
 from flask import Blueprint, jsonify, request
 
 from ..utils.app_settings import (
-    BOOL_SETTINGS, THINK_LEVELS, get_bool, get_think_level, set_setting,
+    ACTIVE_MODELS, BOOL_SETTINGS, THINK_LEVELS,
+    get_active_model, get_bool, get_think_level, set_setting,
 )
 
 settings_bp = Blueprint('settings', __name__)
 
 
 def _current():
-    data = {"think_level": get_think_level()}
+    data = {"think_level": get_think_level(), "active_model": get_active_model()}
+    data["deepseek_available"] = bool((os.environ.get("DEEPSEEK_API_KEY") or "").strip())
     for k in BOOL_SETTINGS:
         data[k] = get_bool(k)
     return data
@@ -38,6 +42,15 @@ def update_settings():
                 "error": f"think_level must be one of {list(THINK_LEVELS)}"
             }), 400
         set_setting('think_level', level)
+
+    if 'active_model' in data:
+        m = data.get('active_model')
+        if m not in ACTIVE_MODELS:
+            return jsonify({
+                "success": False,
+                "error": f"active_model must be one of {list(ACTIVE_MODELS)}"
+            }), 400
+        set_setting('active_model', m)
 
     for key in BOOL_SETTINGS:
         if key in data:

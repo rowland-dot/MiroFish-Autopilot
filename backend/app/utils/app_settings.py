@@ -49,6 +49,17 @@ def get_think_level(path: str = None) -> str:
     return value if value in THINK_LEVELS else DEFAULT_THINK_LEVEL
 
 
+# 模型切换（部署级）: 全部推演所用大模型
+ACTIVE_MODELS = ("minimax-m3", "deepseek-v4-pro")
+DEFAULT_ACTIVE_MODEL = "minimax-m3"
+
+
+def get_active_model(path: str = None) -> str:
+    """Current active model; unknown/missing values sanitize to the default."""
+    value = get_setting("active_model", DEFAULT_ACTIVE_MODEL, path=path)
+    return value if value in ACTIVE_MODELS else DEFAULT_ACTIVE_MODEL
+
+
 # 布尔型运行时设置及默认值（部署级）
 BOOL_SETTINGS = {
     "graph_memory_update_enabled": False,  # 模拟每轮写回图谱（默认关闭，省 Zep 额度）

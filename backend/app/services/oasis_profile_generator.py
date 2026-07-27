@@ -248,10 +248,14 @@ class OasisProfileGenerator:
         zep_api_key: Optional[str] = None,
         graph_id: Optional[str] = None
     ):
-        self.api_key = api_key or Config.LLM_API_KEY
-        self.base_url = base_url or Config.LLM_BASE_URL
-        self.model_name = model_name or Config.LLM_MODEL_NAME
-        
+        from ..utils.resolve_llm import resolve_llm
+        from ..utils.app_settings import get_active_model
+        import os
+        _r = resolve_llm(get_active_model(), os.environ)
+        self.api_key = api_key or _r["api_key"]
+        self.base_url = base_url or _r["base_url"]
+        self.model_name = model_name or _r["model"]
+
         if not self.api_key:
             raise ValueError("LLM_API_KEY 未配置")
         

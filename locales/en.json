@@ -89,6 +89,8 @@
     "graphVizOn": "On",
     "graphVizOff": "Off",
     "graphVizHint": "The live knowledge-graph display is cosmetic. Turn it off to save Zep read credits — report quality is unaffected.",
+    "modelLabel": "Model",
+    "modelDeepseekUnavailable": "DeepSeek key not set — using MiniMax. Add DEEPSEEK_API_KEY in Space secrets to enable.",
     "startEngine": "Start Engine",
     "initializing": "Initializing..."
   },

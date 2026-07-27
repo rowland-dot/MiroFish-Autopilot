@@ -42,3 +42,19 @@ def test_get_think_level_defaults_to_economy_and_sanitizes(tmp_path):
     set_setting("think_level", "deep", path=path)
     assert get_think_level(path=path) == "deep"
     assert set(THINK_LEVELS) == {"economy", "deep"}
+
+
+def test_active_model_default_and_persist(tmp_path):
+    from app.utils.app_settings import get_active_model, ACTIVE_MODELS
+    p = str(tmp_path / "s.json")
+    assert get_active_model(path=p) == "minimax-m3"
+    set_setting("active_model", "deepseek-v4-pro", path=p)
+    assert get_active_model(path=p) == "deepseek-v4-pro"
+    assert set(ACTIVE_MODELS) == {"minimax-m3", "deepseek-v4-pro"}
+
+
+def test_active_model_unknown_sanitizes_to_default(tmp_path):
+    from app.utils.app_settings import get_active_model
+    p = str(tmp_path / "s.json")
+    set_setting("active_model", "gpt-9", path=p)
+    assert get_active_model(path=p) == "minimax-m3"

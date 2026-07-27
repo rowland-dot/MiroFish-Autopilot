@@ -35,3 +35,29 @@ def test_post_rejects_invalid_value(client):
     assert r.status_code == 400
     # and the stored value is untouched
     assert client.get("/api/settings").get_json()["data"]["think_level"] == "economy"
+
+
+def test_get_settings_includes_active_model_and_deepseek_available(client):
+    r = client.get('/api/settings').get_json()['data']
+    assert r['active_model'] in ('minimax-m3', 'deepseek-v4-pro')
+    assert isinstance(r['deepseek_available'], bool)
+
+
+def test_deepseek_available_false_when_key_unset(client, monkeypatch):
+    monkeypatch.delenv('DEEPSEEK_API_KEY', raising=False)
+    assert client.get('/api/settings').get_json()['data']['deepseek_available'] is False
+
+
+def test_deepseek_available_true_when_key_set(client, monkeypatch):
+    monkeypatch.setenv('DEEPSEEK_API_KEY', 'ds_key')
+    assert client.get('/api/settings').get_json()['data']['deepseek_available'] is True
+
+
+def test_post_active_model_valid(client):
+    r = client.post('/api/settings', json={'active_model': 'deepseek-v4-pro'})
+    assert r.get_json()['data']['active_model'] == 'deepseek-v4-pro'
+
+
+def test_post_active_model_invalid_400(client):
+    r = client.post('/api/settings', json={'active_model': 'gpt-9'})
+    assert r.status_code == 400
