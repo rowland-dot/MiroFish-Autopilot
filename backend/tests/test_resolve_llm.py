@@ -47,3 +47,25 @@ def test_build_sim_env_returns_copy():
     base = {"LLM_API_KEY": "mm_key"}
     build_sim_env(base, "deepseek-v4-pro")
     assert base == {"LLM_API_KEY": "mm_key"}
+
+
+def test_llmclient_uses_active_model(monkeypatch, tmp_path):
+    from app.utils import app_settings
+    monkeypatch.setenv("LLM_API_KEY", "mm_key")
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "ds_key")
+    p = str(tmp_path / "s.json")
+    monkeypatch.setattr(app_settings, "_DEFAULT_PATH", p)
+    app_settings.set_setting("active_model", "deepseek-v4-pro", path=p)
+    from app.utils.llm_client import LLMClient
+    c = LLMClient()
+    assert c.model == "deepseek-v4-pro" and c.base_url == "https://api.deepseek.com"
+
+
+def test_llmclient_minimax_default(monkeypatch, tmp_path):
+    from app.utils import app_settings
+    monkeypatch.setenv("LLM_API_KEY", "mm_key")
+    p = str(tmp_path / "s.json")
+    monkeypatch.setattr(app_settings, "_DEFAULT_PATH", p)  # default minimax
+    from app.utils.llm_client import LLMClient
+    c = LLMClient()
+    assert c.model == "MiniMax-M3"
