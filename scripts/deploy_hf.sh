@@ -30,10 +30,16 @@ login
 BUSY=$(curl -s -b "$JAR" "$BASE/api/status" \
   | python -c "import sys,json;print(json.load(sys.stdin).get('data',{}).get('busy'))" 2>/dev/null || echo "unknown")
 if [ "$BUSY" = "True" ] || [ "$BUSY" = "true" ]; then
-  echo "     ABORTED: a simulation or report job is currently running on the Space."
-  echo "     Deploying now would kill it. Re-run this deploy once the job finishes."
-  curl -s -b "$JAR" "$BASE/api/status"; echo
-  exit 3
+  if [ "${FORCE_DEPLOY:-0}" = "1" ]; then
+    echo "     BUSY, but FORCE_DEPLOY=1 — deliberately deploying (kills the running job)."
+    echo "     (Data is still backed up first in step 1, then restored.)"
+  else
+    echo "     ABORTED: a simulation or report job is currently running on the Space."
+    echo "     Deploying now would kill it. Re-run once it finishes, or set FORCE_DEPLOY=1"
+    echo "     to deliberately kill a stuck/held-open job."
+    curl -s -b "$JAR" "$BASE/api/status"; echo
+    exit 3
+  fi
 fi
 if [ "$BUSY" = "unknown" ]; then
   echo "     WARNING: could not read /api/status (older version without it?)."
