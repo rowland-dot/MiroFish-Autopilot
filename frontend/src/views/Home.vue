@@ -260,6 +260,16 @@
                 <span class="tl-hint">{{ $t('home.graphVizHint') }}</span>
                 <span v-if="graphVizSaved" class="tl-saved">✓ {{ $t('home.thinkLevelSaved') }}</span>
               </div>
+              <!-- 模型切换（部署级，全队共用）：MiniMax M3 / DeepSeek V4 Pro -->
+              <div class="think-level" style="margin-top:8px;">
+                <span class="tl-label">{{ $t('home.modelLabel') }}</span>
+                <div class="tl-seg">
+                  <button class="tl-opt" :class="{ active: activeModel === 'minimax-m3' }" @click="setModel('minimax-m3')">MiniMax M3</button>
+                  <button class="tl-opt" :class="{ active: activeModel === 'deepseek-v4-pro' }" :disabled="!deepseekAvailable" @click="setModel('deepseek-v4-pro')">DeepSeek V4 Pro</button>
+                </div>
+                <span v-if="!deepseekAvailable" class="tl-hint">{{ $t('home.modelDeepseekUnavailable') }}</span>
+                <span v-if="modelSaved" class="tl-saved">✓ {{ $t('home.thinkLevelSaved') }}</span>
+              </div>
             </div>
 
             <!-- 启动按钮：手动逐步 / 自动直达报告 -->
@@ -410,11 +420,34 @@ const setGraphViz = async (enabled) => {
   }
 }
 
+// 模型切换（部署级）：MiniMax M3 / DeepSeek V4 Pro
+const activeModel = ref('minimax-m3')
+const deepseekAvailable = ref(false)
+const modelSaved = ref(false)
+let modelSavedTimer = null
+
+const setModel = async (m) => {
+  if (m === activeModel.value) return
+  if (m === 'deepseek-v4-pro' && !deepseekAvailable.value) return
+  const previous = activeModel.value
+  activeModel.value = m
+  try {
+    await updateSettings({ active_model: m })
+    modelSaved.value = true
+    clearTimeout(modelSavedTimer)
+    modelSavedTimer = setTimeout(() => { modelSaved.value = false }, 2000)
+  } catch {
+    activeModel.value = previous
+  }
+}
+
 onMounted(async () => {
   try {
     const res = await getSettings()
     if (res.data?.think_level) thinkLevel.value = res.data.think_level
     if (typeof res.data?.graph_viz_enabled === 'boolean') graphVizEnabled.value = res.data.graph_viz_enabled
+    if (res.data?.active_model) activeModel.value = res.data.active_model
+    deepseekAvailable.value = !!res.data?.deepseek_available
   } catch {
     // 读取失败保持默认显示，不影响页面其他功能
   }
