@@ -4,8 +4,23 @@ import {
   makeQueue, enqueue, activeEntry, isFull, capacityFull,
   advanceStatus, backfillSimId, cancel, remove, headToPromote,
   mergeForDisplay, reconcileManual, advanceBySimId, ACTIVE_STATUSES,
-  serialize, deserialize,
+  serialize, deserialize, pruneFinished,
 } from '../src/store/pipelineQueue.js'
+
+test('pruneFinished drops done + failed, keeps active/queued', () => {
+  const q = { entries: [
+    { _tmpId: 'a', status: 'failed' },
+    { _tmpId: 'b', status: 'done' },
+    { _tmpId: 'c', status: 'queued' },
+    { _tmpId: 'd', status: 'building' },
+  ] }
+  assert.deepEqual(pruneFinished(q).entries.map(e => e._tmpId), ['c', 'd'])
+})
+
+test('mergeForDisplay hides failed ghosts', () => {
+  const q = { entries: [{ _tmpId: 'x', status: 'failed', realSimId: null, fileName: 'f', prompt: 'p' }] }
+  assert.equal(mergeForDisplay([], q).length, 0)
+})
 
 const sub = (id, over = {}) => ({ _tmpId: id, prompt: 'p', fileName: 'x.docx', status: 'queued', realSimId: null, ...over })
 

@@ -108,6 +108,7 @@ export async function startDriver() {
       const st = (await api.getSystemStatus()).data || {}
       store.reconcileManual(st.running_simulations || [])
     } catch { /* ignore */ }
+    store.prune()   // clear done/failed ghosts so dead cards don't linger
     const active = store.active.value
     if (active && active.mode === 'auto') { runOne(active, deps, _inFlight); return }
     if (!active) {

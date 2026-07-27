@@ -73,7 +73,7 @@ export function reconcileManual(q, runningIds) {
 export function mergeForDisplay(serverList, q) {
   const serverIds = new Set(serverList.map(r => r.simulation_id))
   const optimistic = q.entries
-    .filter(e => e.status !== 'done')
+    .filter(e => e.status !== 'done' && e.status !== 'failed')   // drop finished + dead ghosts
     .filter(e => !(e.realSimId && serverIds.has(e.realSimId)))
     .map(e => ({
       _optimistic: true, _tmpId: e._tmpId, simulation_id: e.realSimId || null,
@@ -81,6 +81,11 @@ export function mergeForDisplay(serverList, q) {
       simulation_requirement: e.prompt, created_at: e.createdAt,
     }))
   return [...optimistic, ...serverList]
+}
+
+// Drop finished/dead entries so they don't linger in localStorage as ghosts.
+export function pruneFinished(q) {
+  return { entries: q.entries.filter(e => e.status !== 'done' && e.status !== 'failed') }
 }
 
 // ---- persistence (R8: survive hard refresh) ----
@@ -94,9 +99,11 @@ export function deserialize(json) {
 
 // ---- reactive singleton ----
 const _state = reactive({
-  q: (typeof localStorage !== 'undefined' && localStorage.getItem(LS_KEY))
-    ? deserialize(localStorage.getItem(LS_KEY))
-    : makeQueue(),
+  q: pruneFinished(
+    (typeof localStorage !== 'undefined' && localStorage.getItem(LS_KEY))
+      ? deserialize(localStorage.getItem(LS_KEY))
+      : makeQueue()
+  ),   // clear ghosts from a prior session on load
 })
 
 function persist() {
@@ -116,6 +123,7 @@ export const pipelineStore = {
   cancel: (id) => mutate(q => cancel(q, id)),
   remove: (id) => mutate(q => remove(q, id)),
   reconcileManual: (runningIds) => mutate(q => reconcileManual(q, runningIds)),
+  prune: () => mutate(q => pruneFinished(q)),
   promoteHead: () => {
     const h = headToPromote(_state.q)
     if (h) mutate(q => advanceStatus(q, h._tmpId, 'ontology'))
