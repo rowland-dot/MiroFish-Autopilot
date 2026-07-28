@@ -99,6 +99,28 @@ test('mergeForDisplay suppresses optimistic entry once server has its realSimId'
   assert.equal(merged[0].simulation_id, 'sim_1')
 })
 
+test('mergeForDisplay backfills prompt/file onto a bare server record (no 未命名模拟)', () => {
+  // prepare 写入配置前，服务器历史记录没有 simulation_requirement —— 卡片标题
+  // 必须回填流水线条目里的提示词与文件名
+  let q = makeQueue()
+  q = enqueue(q, { ...sub('a'), prompt: '奶粉舆情模拟', fileName: 'seed.md' })
+  q = backfillSimId(q, 'a', 'sim_1')
+  const merged = mergeForDisplay([{ simulation_id: 'sim_1', simulation_requirement: '', files: [] }], q)
+  assert.equal(merged.length, 1)
+  assert.equal(merged[0].simulation_requirement, '奶粉舆情模拟')
+  assert.deepEqual(merged[0].files, [{ filename: 'seed.md' }])
+})
+
+test('mergeForDisplay keeps server prompt/files when server has them', () => {
+  let q = makeQueue()
+  q = enqueue(q, { ...sub('a'), prompt: 'local prompt', fileName: 'local.md' })
+  q = backfillSimId(q, 'a', 'sim_1')
+  const rec = { simulation_id: 'sim_1', simulation_requirement: 'server prompt', files: [{ filename: 'server.md' }] }
+  const merged = mergeForDisplay([rec], q)
+  assert.equal(merged[0].simulation_requirement, 'server prompt')
+  assert.deepEqual(merged[0].files, [{ filename: 'server.md' }])
+})
+
 test('mergeForDisplay keeps optimistic entry not yet in server list', () => {
   let q = makeQueue()
   q = enqueue(q, sub('a'))

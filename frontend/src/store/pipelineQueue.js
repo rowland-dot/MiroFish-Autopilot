@@ -97,7 +97,16 @@ export function mergeForDisplay(serverList, q) {
   const bySimId = new Map(live.filter(e => e.realSimId).map(e => [e.realSimId, e]))
   const annotated = serverList.map(r => {
     const e = bySimId.get(r.simulation_id)
-    return e ? { ...r, _pipelineStatus: e.status, _tmpId: e._tmpId, _projectId: e.projectId || null } : r
+    if (!e) return r
+    return {
+      ...r,
+      _pipelineStatus: e.status, _tmpId: e._tmpId, _projectId: e.projectId || null,
+      // 服务器记录在 prepare 写入配置前没有 simulation_requirement/文件名，
+      // 卡片会显示「未命名模拟」——用流水线条目里的提示词/文件名补上
+      simulation_requirement: r.simulation_requirement || e.prompt || '',
+      files: (r.files && r.files.length) ? r.files
+        : (e.fileName ? [{ filename: e.fileName }] : (r.files || [])),
+    }
   })
   const inFlight = annotated.filter(r => r._pipelineStatus)
   const rest = annotated.filter(r => !r._pipelineStatus)
