@@ -566,11 +566,15 @@ const enqueueInstantCard = async (mode) => {
     status: 'queued',
     projectId: null, buildTaskId: null, graphId: null, realSimId: null,
   })
-  // 任务已入列：清空 01 的文件选择，方便直接排下一个（提示词保留，常需复用）
+  return tmpId
+}
+
+// 任务入列后清空 01 的文件选择（提示词保留，常需复用）。
+// 注意：绝不能在 launch() 之前清——launch 在异步 import 回调里才读取
+// files.value 写入 pendingUpload，先清会让手动流程拿到空文件列表直接报错。
+const clearUploadSelection = () => {
   files.value = []
   if (fileInput.value) fileInput.value.value = ''
-  showToast(t('home.jobCreated'))
-  return tmpId
 }
 
 // 轻量提示条（本页唯一用途，无需引入组件库）
@@ -587,7 +591,8 @@ const startSimulation = async () => {
   if (!canSubmit.value || loading.value || pipelineStore.capacityFull.value) return
   disableAutoPilot()
   await enqueueInstantCard('manual')
-  launch()                                   // 手动仍进入分步流程
+  launch()                                   // 手动仍进入分步流程（launch 已同步捕获文件）
+  clearUploadSelection()
 }
 
 // 自动直达报告 - 立即插卡，留在首页，由 app 级驱动器无人值守推进
@@ -598,12 +603,17 @@ const startAutoRun = async () => {
   // 只读展示，可安全点进查看进度。
   disableAutoPilot()
   await enqueueInstantCard('auto')           // 不跳转：留在首页可继续排队
+  clearUploadSelection()
+  showToast(t('home.jobCreated'))
 }
 
 const launch = () => {
-  // 存储待上传的数据
+  // 同步捕获再进异步回调：回调执行时 files.value 可能已被清空
+  //（提交后会清空 01 的文件选择），不捕获会把空列表写进 pendingUpload。
+  const capturedFiles = files.value
+  const capturedRequirement = formData.value.simulationRequirement
   import('../store/pendingUpload.js').then(({ setPendingUpload }) => {
-    setPendingUpload(files.value, formData.value.simulationRequirement)
+    setPendingUpload(capturedFiles, capturedRequirement)
 
     // 立即跳转到Process页面（使用特殊标识表示新建项目）
     router.push({

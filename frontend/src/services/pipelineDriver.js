@@ -195,9 +195,13 @@ export async function startDriver() {
         runOne(active, deps, _inFlight); return
       }
       if (!active) {
-        const h = store.promoteHead()
-        if (h && h.mode === 'auto' && !h._displayOnly) {
-          runOne({ ...h, status: 'ontology' }, deps, _inFlight)
+        // 先窥视队首、再决定是否出队：promoteHead 会无条件把队首翻成
+        // 'ontology'（活跃态）。手动条目由用户自己的步骤页驱动，驱动器若把它
+        // 翻活跃又不推进，它就永远占着槽位（limbo）。只出队 auto 条目。
+        const head = store.raw().entries.find(e => !e._displayOnly && e.status === 'queued')
+        if (head && head.mode === 'auto') {
+          const h = store.promoteHead()
+          if (h) runOne({ ...h, status: 'ontology' }, deps, _inFlight)
         }
       }
     } finally {

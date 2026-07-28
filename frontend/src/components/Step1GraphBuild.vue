@@ -234,11 +234,15 @@ const handleEnterEnvSetup = async () => {
     })
     
     if (res.success && res.data?.simulation_id) {
-      // 手动流程：把真实 sim_id 回填到当前活跃的手动乐观卡片（用于占槽 + 后续释放）
+      // 手动流程：把真实 sim_id 回填到对应的手动乐观卡片（用于占槽 + 后续释放）。
+      // 按 mode 匹配最近一条未回填的手动条目，而不是取 active——若同时有
+      // auto 任务在跑，active 是 auto 条目，按 active 匹配会永远回填不上。
       try {
-        const active = pipelineStore.active.value
-        if (active && active.mode === 'manual' && !active.realSimId) {
-          pipelineStore.setSimId(active._tmpId, res.data.simulation_id)
+        const manualEntry = [...pipelineStore.entries.value]
+          .filter(e => e.mode === 'manual' && !e.realSimId && !e._displayOnly)
+          .pop()
+        if (manualEntry) {
+          pipelineStore.setSimId(manualEntry._tmpId, res.data.simulation_id)
         }
       } catch { /* store 不可用不阻断 */ }
       // 跳转到 simulation 页面

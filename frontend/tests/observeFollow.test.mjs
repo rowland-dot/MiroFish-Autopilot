@@ -30,6 +30,12 @@ test('report id wins -> report page', () => {
   assert.equal(t.params.reportId, 'rep_1')
 })
 
+test('reporting WITHOUT a report id stays on the rounds page (no backwards bounce)', () => {
+  const t = targetRouteForEntry({ status: 'reporting', realSimId: 'sim_1' })
+  assert.equal(t.name, 'SimulationRun')
+  assert.equal(t.params.simulationId, 'sim_1')
+})
+
 test('observedEntry matches by sim id, then project id', () => {
   const entries = [
     { _tmpId: 'a', realSimId: 'sim_1', projectId: 'p1' },

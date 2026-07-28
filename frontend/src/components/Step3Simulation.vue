@@ -564,13 +564,19 @@ const fetchRunStatus = async () => {
         addLog(t('log.simFailed') + (data.error ? `: ${data.error}` : ''))
         phase.value = 2
         stopPolling()
-        try { pipelineStore.setStatusBySimId(props.simulationId, 'done') } catch { /* ignore */ }
+        // 仅手动流程在此标记 done；观察模式下该任务由驱动器推进，run 结束后
+        // 驱动器还要进入报告阶段（reporting），这里抢先写 done 会把条目提前清掉。
+        if (!route.query.observe) {
+          try { pipelineStore.setStatusBySimId(props.simulationId, 'done') } catch { /* ignore */ }
+        }
         emit('update-status', 'error')
       } else if (isCompleted) {
         addLog(t('log.simCompleted'))
         phase.value = 2
         stopPolling()
-        try { pipelineStore.setStatusBySimId(props.simulationId, 'done') } catch { /* ignore */ }
+        if (!route.query.observe) {
+          try { pipelineStore.setStatusBySimId(props.simulationId, 'done') } catch { /* ignore */ }
+        }
         emit('update-status', 'completed')
       }
     }

@@ -332,7 +332,16 @@ const confirmDelete = async () => {
   if (!target || deleting.value) return
   deleting.value = true
   try {
+    // 乐观卡片（还没有真实模拟记录）：只需移除流水线条目——之前直接调后端删除
+    // 会传 simulation_id=null 报错，卡死的「准备中」卡片根本删不掉。
+    if (!target.simulation_id) {
+      if (target._tmpId) pipelineStore.remove(target._tmpId)
+      deleteTarget.value = null
+      return
+    }
     await deleteHistoryEntry(target.simulation_id)
+    // 若该记录还挂着流水线条目（进行中被删），一并移除，避免残留占槽
+    if (target._tmpId) pipelineStore.remove(target._tmpId)
     projects.value = projects.value.filter(p => p.simulation_id !== target.simulation_id)
     deleteTarget.value = null
   } catch (e) {
