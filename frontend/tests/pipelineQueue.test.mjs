@@ -7,14 +7,14 @@ import {
   serialize, deserialize, pruneFinished,
 } from '../src/store/pipelineQueue.js'
 
-test('pruneFinished drops done + failed, keeps active/queued', () => {
+test('pruneFinished drops done, keeps failed + active/queued', () => {
   const q = { entries: [
     { _tmpId: 'a', status: 'failed' },
     { _tmpId: 'b', status: 'done' },
     { _tmpId: 'c', status: 'queued' },
     { _tmpId: 'd', status: 'building' },
   ] }
-  assert.deepEqual(pruneFinished(q).entries.map(e => e._tmpId), ['c', 'd'])
+  assert.deepEqual(pruneFinished(q).entries.map(e => e._tmpId), ['a', 'c', 'd'])
 })
 
 test('mergeForDisplay exposes projectId for routing a generating card', () => {
@@ -24,9 +24,17 @@ test('mergeForDisplay exposes projectId for routing a generating card', () => {
   assert.equal(card.simulation_id, null)
 })
 
-test('mergeForDisplay hides failed ghosts', () => {
-  const q = { entries: [{ _tmpId: 'x', status: 'failed', realSimId: null, fileName: 'f', prompt: 'p' }] }
-  assert.equal(mergeForDisplay([], q).length, 0)
+test('mergeForDisplay SHOWS failed cards with their error (no silent vanish)', () => {
+  const q = { entries: [{ _tmpId: 'x', status: 'failed', realSimId: null, fileName: 'f', prompt: 'p', error: 'LLM provider request failed (HTTP 429)' }] }
+  const cards = mergeForDisplay([], q)
+  assert.equal(cards.length, 1)
+  assert.equal(cards[0].status, 'failed')
+  assert.equal(cards[0]._error, 'LLM provider request failed (HTTP 429)')
+})
+
+test('pruneFinished keeps failed, drops only done', () => {
+  const q = { entries: [{ _tmpId: 'a', status: 'done' }, { _tmpId: 'b', status: 'failed' }, { _tmpId: 'c', status: 'queued' }] }
+  assert.deepEqual(pruneFinished(q).entries.map(e => e._tmpId), ['b', 'c'])
 })
 
 const sub = (id, over = {}) => ({ _tmpId: id, prompt: 'p', fileName: 'x.docx', status: 'queued', realSimId: null, ...over })

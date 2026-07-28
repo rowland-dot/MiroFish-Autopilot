@@ -344,6 +344,7 @@
     "queued": "排队中",
     "running": "运行中",
     "generating": "准备中",
+    "failed": "失败",
     "waiting": "等待中",
     "cancelQueue": "取消排队",
     "graphBuild": "图谱构建",

@@ -21,7 +21,8 @@ _LOCK = threading.Lock()
 
 # 服务器保存的字段（不含文件字节：太大且属于浏览器本地）
 SERVER_FIELDS = ("tmpId", "mode", "status", "simId", "projectId", "graphId",
-                 "buildTaskId", "reportId", "prompt", "fileName", "createdAt", "updatedAt")
+                 "buildTaskId", "reportId", "prompt", "fileName", "createdAt", "updatedAt",
+                 "error")
 
 
 def default_path() -> str:
@@ -85,7 +86,10 @@ def prune_entries(entries: list, now: datetime = None, ttl_hours: int = 24) -> l
     cutoff = now - timedelta(hours=ttl_hours)
     out = []
     for e in entries:
-        if e.get("status") in ("done", "failed"):
+        # 'done' is superseded by the real history record; 'failed' stays
+        # visible (with its error) until the user deletes it or TTL passes --
+        # a silently vanishing failed card loses the user's job and the reason
+        if e.get("status") == "done":
             continue
         try:
             updated = datetime.fromisoformat(e.get("updatedAt", ""))

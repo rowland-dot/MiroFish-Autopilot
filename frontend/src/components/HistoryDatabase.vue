@@ -23,14 +23,15 @@
         v-for="(project, index) in displayProjects"
         :key="project.simulation_id || project._tmpId"
         class="project-card"
-        :class="{ expanded: isExpanded, hovering: hoveringCard === index, queued: isCardQueued(project), running: isCardRunning(project), generating: isCardGenerating(project) }"
+        :class="{ expanded: isExpanded, hovering: hoveringCard === index, queued: isCardQueued(project), running: isCardRunning(project), generating: isCardGenerating(project), failed: isCardFailed(project) }"
         :style="getCardStyle(index)"
         @mouseenter="hoveringCard = index"
         @mouseleave="hoveringCard = null"
         @click="navigateToProject(project)"
       >
         <!-- 状态徽标（右上角）：运行中 / 生成中 / 排队中 -->
-        <span v-if="isCardRunning(project)" class="card-run-badge">{{ $t('history.running') }}</span>
+        <span v-if="isCardFailed(project)" class="card-failed-badge">{{ $t('history.failed') }}</span>
+        <span v-else-if="isCardRunning(project)" class="card-run-badge">{{ $t('history.running') }}</span>
         <span v-else-if="isCardGenerating(project)" class="card-gen-badge">{{ $t('history.generating') }}</span>
         <span v-else-if="isCardQueued(project)" class="card-queued-badge">{{ $t('history.queued') }}</span>
         <!-- 永久删除按钮（悬停显示，阻止冒泡以免打开项目） -->
@@ -95,7 +96,10 @@
             <span class="card-date">{{ formatDate(project.created_at) }}</span>
             <span class="card-time">{{ formatTime(project.created_at) }}</span>
           </div>
-          <span v-if="isCardQueued(project)" class="card-progress queued">
+          <span v-if="isCardFailed(project)" class="card-progress failed" :title="project._error || ''">
+            <span class="status-dot">●</span> {{ project._error || $t('history.failed') }}
+          </span>
+          <span v-else-if="isCardQueued(project)" class="card-progress queued">
             <span class="status-dot">●</span> {{ $t('history.waiting') }}
           </span>
           <span v-else-if="isCardGenerating(project)" class="card-progress generating">
@@ -286,6 +290,7 @@ const isCardRunning = (project) =>
     ? project.status === 'running'
     : (isQueued(project.simulation_id, runningIds.value) && !isRecordComplete(project))
 const isCardGenerating = (project) => GEN_STATUSES.includes(pipelineStage(project))
+const isCardFailed = (project) => pipelineStage(project) === 'failed'
 
 const refreshQueueState = async () => {
   try {
@@ -957,6 +962,29 @@ onUnmounted(() => {
   border-bottom: 1px solid #2563EB;
 }
 .card-progress.generating { color: #2563EB; }
+.project-card.failed { border-color: #FCA5A5; }
+.card-failed-badge {
+  position: absolute;
+  top: 0;
+  right: 0;
+  z-index: 9;
+  font-size: 9px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  font-weight: 600;
+  padding: 3px 8px;
+  color: #DC2626;
+  background: #FEF2F2;
+  border-left: 1px solid #DC2626;
+  border-bottom: 1px solid #DC2626;
+}
+.card-progress.failed {
+  color: #DC2626;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
 /* 排队中：卡片徽标 + 取消按钮 */
 .project-card.queued { border-color: #FCA5A5; }

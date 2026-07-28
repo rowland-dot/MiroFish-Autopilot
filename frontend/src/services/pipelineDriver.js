@@ -8,6 +8,23 @@ import { b64ToFile } from '../store/fileCodec.js'
 const TERMINAL_RUN = ['completed', 'stopped', 'failed']
 const PREPARED = ['completed', 'ready']
 
+// Transient provider/gateway trouble (LLM rate limits, HF gateway flaps)
+// must NOT fail the whole job — back off and retry a few times first.
+function isTransient(e) {
+  const st = e && e.response && e.response.status
+  if ([429, 500, 502, 503, 504].includes(st)) return true
+  return /HTTP 429|rate limit|Network Error|timeout|ECONNABORTED/i.test((e && e.message) || '')
+}
+
+async function withRetry(fn, sleep, attempts = 3) {
+  for (let i = 0; ; i++) {
+    try { return await fn() } catch (e) {
+      if (i >= attempts - 1 || !isTransient(e)) throw e
+      await sleep(5000 * (i + 1))
+    }
+  }
+}
+
 // Advance a single entry. Guarded by `inFlight` (per _tmpId) so a second
 // driver tick can never re-enter and double-fire /start (the OOM). Resumes
 // from stored ids — never restarts a step whose output id already exists.
@@ -22,13 +39,13 @@ export async function runOne(entry, deps, inFlight = new Set()) {
     let simId = entry.realSimId
 
     if (!projectId) {
-      const res = await api.generateOntology(buildFormData(entry))
+      const res = await withRetry(() => api.generateOntology(buildFormData(entry)), sleep)
       projectId = (res.data || res).project_id
       store.patch(id, { projectId }); store.setStatus(id, 'building'); signal()
     }
 
     if (!graphId) {
-      const d = (await api.buildGraph({ project_id: projectId })).data || {}
+      const d = (await withRetry(() => api.buildGraph({ project_id: projectId }), sleep)).data || {}
       if (d.graph_id) {
         graphId = d.graph_id
       } else if (d.task_id) {
@@ -45,14 +62,14 @@ export async function runOne(entry, deps, inFlight = new Set()) {
     }
 
     if (!simId) {
-      const res = await api.createSimulation({ project_id: projectId, graph_id: graphId, enable_twitter: true, enable_reddit: true })
+      const res = await withRetry(() => api.createSimulation({ project_id: projectId, graph_id: graphId, enable_twitter: true, enable_reddit: true }), sleep)
       simId = (res.data || res).simulation_id
       store.setSimId(id, simId); store.setStatus(id, 'preparing'); signal()
     }
 
     // prepare (idempotent server-side: already_prepared short-circuits)
     {
-      const d = (await api.prepareSimulation({ simulation_id: simId, use_llm_for_profiles: true, parallel_profile_count: 5 })).data || {}
+      const d = (await withRetry(() => api.prepareSimulation({ simulation_id: simId, use_llm_for_profiles: true, parallel_profile_count: 5 }), sleep)).data || {}
       if (!d.already_prepared && d.task_id) {
         for (;;) {
           const ps = ((await api.getPrepareStatus({ task_id: d.task_id, simulation_id: simId })).data || {})
@@ -73,7 +90,7 @@ export async function runOne(entry, deps, inFlight = new Set()) {
       const pre = ((await api.getRunStatus(simId)).data || {}).runner_status
       if (pre !== 'completed') {
         if (pre !== 'running') {
-          await api.startSimulation({ simulation_id: simId, platform: 'parallel', force: true })
+          await withRetry(() => api.startSimulation({ simulation_id: simId, platform: 'parallel', force: true }), sleep)
         }
       // NOTE: the entry stays 'preparing' until the run is OBSERVED live.
       // Marking it 'running' before then let the server-side reconcile see a
@@ -122,6 +139,8 @@ export async function runOne(entry, deps, inFlight = new Set()) {
       store.setStatus(id, 'done'); signal()
     }
   } catch (e) {
+    // keep the reason on the entry — the failed card shows it to the user
+    store.patch(id, { error: String((e && e.message) || e) })
     store.setStatus(id, 'failed'); signal()
   } finally {
     inFlight.delete(id)

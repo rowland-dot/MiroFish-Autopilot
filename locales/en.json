@@ -344,6 +344,7 @@
     "queued": "Queued",
     "running": "Running",
     "generating": "Preparing",
+    "failed": "Failed",
     "waiting": "Waiting",
     "cancelQueue": "Cancel queue",
     "graphBuild": "Graph Build",

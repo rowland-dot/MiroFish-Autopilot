@@ -49,11 +49,18 @@ def test_remove_entry():
     assert remove_entry([], "missing") == []
 
 
-def test_prune_drops_done_failed_and_stale():
+def test_prune_drops_done_and_stale_but_keeps_failed():
+    # failed entries stay visible (with their error) until the user deletes
+    # them or the TTL passes -- silently vanishing cards lose the user's job
     old = NOW - timedelta(hours=48)
     es = [_e("keep", "running"), _e("d", "done"), _e("f", "failed"),
-          _e("stale", "queued", updated=old)]
-    assert [x["tmpId"] for x in prune_entries(es, NOW, ttl_hours=24)] == ["keep"]
+          _e("stale", "queued", updated=old), _e("fstale", "failed", updated=old)]
+    assert [x["tmpId"] for x in prune_entries(es, NOW, ttl_hours=24)] == ["keep", "f"]
+
+
+def test_error_field_round_trips_through_upsert():
+    es = upsert_entry([], {**_e("a", "failed"), "error": "LLM provider request failed (HTTP 429)"}, NOW)
+    assert es[0]["error"] == "LLM provider request failed (HTTP 429)"
 
 
 def test_mutate_entries_applies_fn_and_persists(tmp_path):

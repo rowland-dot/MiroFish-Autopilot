@@ -78,7 +78,9 @@ export function reconcileManual(q, runningIds) {
 // Merge server history with optimistic entries. Server record wins; an
 // optimistic entry whose realSimId is already in the server list is dropped.
 export function mergeForDisplay(serverList, q) {
-  const live = q.entries.filter(e => e.status !== 'done' && e.status !== 'failed')
+  // 'done' entries are superseded by the real history record; 'failed' ones
+  // STAY visible with their error — silently vanishing cards lose the job.
+  const live = q.entries.filter(e => e.status !== 'done')
   const serverIds = new Set(serverList.map(r => r.simulation_id))
 
   // still-optimistic entries: no server record yet
@@ -86,7 +88,7 @@ export function mergeForDisplay(serverList, q) {
     .filter(e => !(e.realSimId && serverIds.has(e.realSimId)))
     .map(e => ({
       _optimistic: true, _tmpId: e._tmpId, simulation_id: e.realSimId || null,
-      _projectId: e.projectId || null,
+      _projectId: e.projectId || null, _error: e.error || null,
       status: e.status, files: [{ filename: e.fileName }],
       simulation_requirement: e.prompt, created_at: e.createdAt,
     }))
@@ -101,6 +103,7 @@ export function mergeForDisplay(serverList, q) {
     return {
       ...r,
       _pipelineStatus: e.status, _tmpId: e._tmpId, _projectId: e.projectId || null,
+      _error: e.error || null,
       // 服务器记录在 prepare 写入配置前没有 simulation_requirement/文件名，
       // 卡片会显示「未命名模拟」——用流水线条目里的提示词/文件名补上
       simulation_requirement: r.simulation_requirement || e.prompt || '',
@@ -125,9 +128,10 @@ export function mergeForDisplay(serverList, q) {
   return [...pipelineCards, ...rest]
 }
 
-// Drop finished/dead entries so they don't linger in localStorage as ghosts.
+// Drop finished entries so they don't linger in localStorage as ghosts.
+// Failed entries are KEPT — user deletes them explicitly (server TTL backstops).
 export function pruneFinished(q) {
-  return { ...q, entries: q.entries.filter(e => e.status !== 'done' && e.status !== 'failed') }
+  return { ...q, entries: q.entries.filter(e => e.status !== 'done') }
 }
 
 // ---- persistence (R8: survive hard refresh) ----
@@ -151,19 +155,19 @@ export function toServerEntry(e) {
     tmpId: e._tmpId, mode: e.mode, status: e.status,
     simId: e.realSimId || null, projectId: e.projectId || null,
     graphId: e.graphId || null, buildTaskId: e.buildTaskId || null,
-    reportId: e.reportId || null,
+    reportId: e.reportId || null, error: e.error || null,
     prompt: e.prompt, fileName: e.fileName, createdAt: e.createdAt,
   }
 }
 
-const SERVER_OWNED = ['status', 'projectId', 'graphId', 'buildTaskId', 'reportId', 'mode', 'prompt', 'fileName', 'createdAt']
+const SERVER_OWNED = ['status', 'projectId', 'graphId', 'buildTaskId', 'reportId', 'mode', 'prompt', 'fileName', 'createdAt', 'error']
 
 function fromServerEntry(s) {
   return {
     _tmpId: s.tmpId, mode: s.mode, status: s.status,
     realSimId: s.simId || null, projectId: s.projectId || null,
     graphId: s.graphId || null, buildTaskId: s.buildTaskId || null,
-    reportId: s.reportId || null,
+    reportId: s.reportId || null, error: s.error || null,
     prompt: s.prompt, fileName: s.fileName, createdAt: s.createdAt,
     updatedAt: s.updatedAt, _seenOnServer: true, _dirty: false, _rev: 0,
   }
@@ -291,7 +295,7 @@ export const pipelineStore = {
   cancel: (id) => mutate(q => addTombstones(cancel(q, id), [id])),
   remove: (id) => mutate(q => addTombstones(remove(q, id), [id])),
   prune: () => mutate(q => {
-    const dropped = q.entries.filter(e => e.status === 'done' || e.status === 'failed').map(e => e._tmpId)
+    const dropped = q.entries.filter(e => e.status === 'done').map(e => e._tmpId)
     return addTombstones(pruneFinished(q), dropped)
   }),
 

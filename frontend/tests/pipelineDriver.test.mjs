@@ -126,3 +126,31 @@ test('prepare task failure fails the entry instead of spinning forever', async (
   assert.equal(d._rec.statuses.at(-1), 'failed')
   assert.ok(!calls.includes('start'), 'must stop at the failed prepare')
 })
+
+// 瞬时限流（HTTP 429 / 网络抖动）不应整单失败 —— 应退避重试
+test('transient 429 on ontology is retried, job survives', async () => {
+  const calls = []
+  const api = mockApi(calls)
+  let n = 0
+  api.generateOntology = async () => {
+    calls.push('ontology')
+    if (n++ === 0) { const e = new Error('LLM provider request failed (HTTP 429)'); throw e }
+    return { data: { project_id: 'proj_1' } }
+  }
+  const d = deps(api)
+  await runOne({ _tmpId: 'r6', file: {}, prompt: 'p' }, d)
+  assert.equal(calls.filter(c => c === 'ontology').length, 2)
+  assert.equal(d._rec.statuses.at(-1), 'done')
+})
+
+test('persistent failure records the error message on the entry', async () => {
+  const calls = []
+  const api = mockApi(calls)
+  api.generateOntology = async () => { throw new Error('LLM provider request failed (HTTP 429)') }
+  const patches = []
+  const d = deps(api)
+  d.store.patch = (_id, p) => patches.push(p)
+  await runOne({ _tmpId: 'r7', file: {}, prompt: 'p' }, d)
+  assert.equal(d._rec.statuses.at(-1), 'failed')
+  assert.ok(patches.some(p => /HTTP 429/.test(p.error || '')), 'error message must be stored on the entry')
+})
