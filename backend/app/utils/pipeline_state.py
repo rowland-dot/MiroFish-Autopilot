@@ -92,6 +92,39 @@ def prune_entries(entries: list, now: datetime = None, ttl_hours: int = 24) -> l
     return out
 
 
+_TERMINAL_RUN = ("completed", "stopped", "failed")
+
+
+def reconcile_with_runs(entries: list, run_status_of) -> list:
+    """Release entries whose simulation already finished. Pure.
+
+    The browser driver owns an entry's status, so if that browser dies (tab
+    closed, restart) the entry can sit on 'running' forever and hold the slot,
+    blocking the queue. The simulation's own run record is the ground truth:
+    once it is terminal, the entry is done.
+    """
+    out = []
+    for e in entries:
+        sim_id = e.get("simId")
+        if sim_id and run_status_of(sim_id) in _TERMINAL_RUN:
+            out.append({**e, "status": "done"})
+        else:
+            out.append(e)
+    return out
+
+
+def run_status_reader(run_state_dir: str):
+    """Build a run_status_of(sim_id) that reads run_state.json from disk."""
+    def _read(sim_id):
+        try:
+            with open(os.path.join(run_state_dir, sim_id, "run_state.json"),
+                      "r", encoding="utf-8") as f:
+                return json.load(f).get("runner_status")
+        except (OSError, json.JSONDecodeError):
+            return None
+    return _read
+
+
 def mutate_entries(path: str, fn) -> list:
     """Locked read-modify-write. The ONLY way handlers mutate the store."""
     with _LOCK:

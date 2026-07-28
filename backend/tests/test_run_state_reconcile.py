@@ -61,3 +61,35 @@ def test_reconcile_tolerates_missing_dir_and_corrupt_files(tmp_path):
     with open(os.path.join(d, "run_state.json"), "w", encoding="utf-8") as f:
         f.write("not json")
     assert reconcile_run_states(root2) == []         # corrupt -> skipped, no crash
+
+
+def test_reconcile_also_fixes_manager_state_json(tmp_path):
+    # SimulationManager persists its own state.json; a restart leaves it
+    # 'running' too, which is why /api/simulation/list kept lying.
+    root = str(tmp_path)
+    d = os.path.join(root, "sim_x")
+    os.makedirs(d, exist_ok=True)
+    with open(os.path.join(d, "run_state.json"), "w", encoding="utf-8") as f:
+        json.dump({"runner_status": "running", "current_round": 5, "total_rounds": 72}, f)
+    with open(os.path.join(d, "state.json"), "w", encoding="utf-8") as f:
+        json.dump({"simulation_id": "sim_x", "status": "running"}, f)
+
+    reconcile_run_states(root)
+
+    with open(os.path.join(d, "state.json"), "r", encoding="utf-8") as f:
+        assert json.load(f)["status"] == "stopped"
+
+
+def test_reconcile_manager_state_completed_when_rounds_done(tmp_path):
+    root = str(tmp_path)
+    d = os.path.join(root, "sim_y")
+    os.makedirs(d, exist_ok=True)
+    with open(os.path.join(d, "run_state.json"), "w", encoding="utf-8") as f:
+        json.dump({"runner_status": "running", "current_round": 72, "total_rounds": 72}, f)
+    with open(os.path.join(d, "state.json"), "w", encoding="utf-8") as f:
+        json.dump({"simulation_id": "sim_y", "status": "running"}, f)
+
+    reconcile_run_states(root)
+
+    with open(os.path.join(d, "state.json"), "r", encoding="utf-8") as f:
+        assert json.load(f)["status"] == "completed"

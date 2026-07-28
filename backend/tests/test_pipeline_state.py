@@ -78,3 +78,25 @@ def test_mutate_entries_is_atomic_under_concurrency(tmp_path):
     [t.start() for t in ts]
     [t.join() for t in ts]
     assert {x["tmpId"] for x in load_entries(p)} == {"a", "b"}
+
+
+def test_reconcile_with_runs_marks_finished_sims_done():
+    # A pipeline entry whose simulation already finished (or was killed) must
+    # not keep holding the slot forever.
+    from app.utils.pipeline_state import reconcile_with_runs
+    entries = [
+        {"tmpId": "a", "status": "running", "simId": "sim_dead"},
+        {"tmpId": "b", "status": "running", "simId": "sim_live"},
+        {"tmpId": "c", "status": "queued", "simId": None},
+    ]
+    status_of = {"sim_dead": "stopped", "sim_live": "running"}.get
+    out = reconcile_with_runs(entries, status_of)
+    assert out[0]["status"] == "done"        # finished -> released
+    assert out[1]["status"] == "running"     # still alive -> untouched
+    assert out[2]["status"] == "queued"      # no sim yet -> untouched
+
+
+def test_reconcile_with_runs_ignores_unknown_sims():
+    from app.utils.pipeline_state import reconcile_with_runs
+    entries = [{"tmpId": "a", "status": "running", "simId": "sim_x"}]
+    assert reconcile_with_runs(entries, lambda s: None)[0]["status"] == "running"

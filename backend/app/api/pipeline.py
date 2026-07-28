@@ -6,10 +6,14 @@
 Spec: docs/specs/2026-07-28-server-persisted-pipeline-state-spec.md
 """
 
+import os
+
 from flask import Blueprint, jsonify, request
 
+from ..config import Config
 from ..utils.pipeline_state import (
-    default_path, mutate_entries, prune_entries, remove_entry, upsert_entry,
+    default_path, mutate_entries, prune_entries, reconcile_with_runs,
+    remove_entry, run_status_reader, upsert_entry,
 )
 
 pipeline_bp = Blueprint('pipeline', __name__)
@@ -19,10 +23,21 @@ def _ok(entries):
     return jsonify({"success": True, "data": {"entries": entries}})
 
 
+def _heal(entries):
+    """Release entries whose simulation already finished, then prune.
+
+    Self-healing: if the browser that owned an entry died, its run record is
+    the ground truth — without this the entry holds the slot forever and the
+    queue never moves.
+    """
+    reader = run_status_reader(os.path.join(Config.UPLOAD_FOLDER, 'simulations'))
+    return prune_entries(reconcile_with_runs(entries, reader))
+
+
 @pipeline_bp.route('', methods=['GET'], strict_slashes=False)
 def get_pipeline():
     """读取条目（顺带清理并落盘，避免只读时文件无限增长）。"""
-    return _ok(mutate_entries(default_path(), lambda es: prune_entries(es)))
+    return _ok(mutate_entries(default_path(), _heal))
 
 
 @pipeline_bp.route('', methods=['POST'], strict_slashes=False)
@@ -32,11 +47,11 @@ def upsert_pipeline():
     if not entry.get('tmpId'):
         return jsonify({"success": False, "error": "tmpId is required"}), 400
     return _ok(mutate_entries(
-        default_path(), lambda es: prune_entries(upsert_entry(es, entry))))
+        default_path(), lambda es: _heal(upsert_entry(es, entry))))
 
 
 @pipeline_bp.route('/<tmp_id>', methods=['DELETE'])
 def delete_pipeline(tmp_id):
     """删除一条（取消排队 / 清理）。未知 id 也返回 200，便于幂等重试。"""
     return _ok(mutate_entries(
-        default_path(), lambda es: prune_entries(remove_entry(es, tmp_id))))
+        default_path(), lambda es: _heal(remove_entry(es, tmp_id))))

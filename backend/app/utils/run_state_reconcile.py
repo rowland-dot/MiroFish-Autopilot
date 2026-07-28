@@ -59,7 +59,30 @@ def reconcile_run_states(run_state_dir: str) -> list:
             changed.append(sim_id)
         except OSError:
             continue
+        # SimulationManager keeps its OWN state.json; a restart leaves that
+        # stuck on 'running' too (that is why /api/simulation/list kept
+        # reporting a run that no longer exists). Finalize it to match.
+        _finalize_manager_state(os.path.join(run_state_dir, sim_id), new_status)
     return changed
+
+
+def _finalize_manager_state(sim_dir: str, new_status: str) -> None:
+    path = os.path.join(sim_dir, "state.json")
+    if not os.path.isfile(path):
+        return
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except (OSError, json.JSONDecodeError):
+        return
+    if data.get("status") not in _NON_TERMINAL:
+        return
+    data["status"] = new_status
+    try:
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+    except OSError:
+        pass
 
 
 def reconcile_on_start(run_state_dir: str) -> None:
