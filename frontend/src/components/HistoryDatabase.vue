@@ -279,11 +279,12 @@ const isCardQueued = (project) =>
   project._optimistic
     ? project.status === 'queued'
     : (pipelineStage(project) === 'queued' || isQueued(project.simulation_id, queuedIds.value))
+// 真实记录的「运行中」只认 /api/status 的实时进程列表——run_state 文件可能是
+// 被重启杀掉后遗留的僵尸记录（仍写着 running），据此显示会长期骗人。
 const isCardRunning = (project) =>
   project._optimistic
     ? project.status === 'running'
-    : ((pipelineStage(project) === 'running' || isQueued(project.simulation_id, runningIds.value))
-       && !isRecordComplete(project))
+    : (isQueued(project.simulation_id, runningIds.value) && !isRecordComplete(project))
 const isCardGenerating = (project) => GEN_STATUSES.includes(pipelineStage(project))
 
 const refreshQueueState = async () => {

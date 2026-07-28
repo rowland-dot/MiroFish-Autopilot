@@ -62,10 +62,21 @@ export async function runOne(entry, deps, inFlight = new Set()) {
     {
       await api.startSimulation({ simulation_id: simId, platform: 'parallel', force: true })
       let rs
+      let goneStreak = 0     // consecutive polls where no live process exists
       do {
         rs = ((await api.getRunStatus(simId)).data || {}).runner_status
-        if (!TERMINAL_RUN.includes(rs)) await sleep(2000)
-      } while (!TERMINAL_RUN.includes(rs))
+        if (TERMINAL_RUN.includes(rs)) break
+        // A restart can kill the subprocess and leave run_state stuck on
+        // 'running' forever. /api/status lists LIVE processes, so if the sim
+        // is absent there for several polls the run is dead — bail out
+        // instead of polling a corpse for eternity.
+        try {
+          const live = ((await api.getSystemStatus()).data || {}).running_simulations || []
+          goneStreak = live.includes(simId) ? 0 : goneStreak + 1
+        } catch { goneStreak = 0 }
+        if (goneStreak >= 5) throw new Error('simulation process is gone (killed or restarted)')
+        await sleep(2000)
+      } while (true)
     }
 
     // report (Step 4) — auto-pilot means "auto to report", so the driver

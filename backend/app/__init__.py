@@ -86,6 +86,11 @@ def create_app(config_class=Config):
     from .api.pipeline import pipeline_bp
     app.register_blueprint(pipeline_bp, url_prefix='/api/pipeline')
 
+    # 启动清理：重启会杀掉 OASIS 子进程但不会更新 run_state.json，
+    # 遗留的 "running" 僵尸记录会让卡片一直显示运行中、驱动器空转。
+    from .utils.run_state_reconcile import reconcile_on_start
+    reconcile_on_start(os.path.join(Config.UPLOAD_FOLDER, 'simulations'))
+
     # 多 Zep 账号密钥管理（ZEP_API_KEY(, ZEP_API_KEY_2, …)）——额度耗尽自动切换
     from .utils import zep_client
     zep_client.init_manager(os.environ)
