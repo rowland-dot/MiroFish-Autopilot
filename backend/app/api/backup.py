@@ -42,4 +42,11 @@ def upload_restore():
         count = restore_from_bytes(file.read(), _data_dir())
     except ValueError as e:
         return jsonify({"success": False, "error": str(e)}), 400
+
+    # 还原会把重启前的 run_state 一并带回来，其中可能有被重启杀掉、却仍写着
+    # "running" 的僵尸记录（启动时的清理跑在还原之前，清不到它们）。
+    import os
+    from ..utils.run_state_reconcile import reconcile_on_start
+    reconcile_on_start(os.path.join(_data_dir(), 'simulations'))
+
     return jsonify({"success": True, "restored_entries": count})
