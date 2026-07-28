@@ -154,3 +154,30 @@ test('persistent failure records the error message on the entry', async () => {
   assert.equal(d._rec.statuses.at(-1), 'failed')
   assert.ok(patches.some(p => /HTTP 429/.test(p.error || '')), 'error message must be stored on the entry')
 })
+
+// 上传内容必须来自确定性的 b64 字节；无字节时绝不能发出「无文件」请求
+test('buildFormData builds from fileB64 and throws when no bytes exist', async () => {
+  const { buildFormData } = await import('../src/services/pipelineDriver.js')
+  const fd = buildFormData({ fileB64: 'AQID', fileName: 'x.docx', fileType: '', prompt: 'p' })
+  const f = fd.get('files')
+  assert.equal(f.name, 'x.docx')
+  assert.equal(f.size, 3)
+  assert.throws(() => buildFormData({ prompt: 'p', fileName: 'x.docx' }), /文件/)
+})
+
+test('exhausted retries keep the root-cause error, not just the last attempt', async () => {
+  const calls = []
+  const api = mockApi(calls)
+  let n = 0
+  api.generateOntology = async () => {
+    n++
+    if (n < 3) throw new Error('LLM provider request failed (HTTP 429)')
+    throw new Error('请至少上传一个文件')
+  }
+  const patches = []
+  const d = deps(api)
+  d.store.patch = (_id, p) => patches.push(p)
+  await runOne({ _tmpId: 'r8', fileB64: 'AQID', fileName: 'x.docx', prompt: 'p' }, d)
+  const err = (patches.find(p => p.error) || {}).error || ''
+  assert.ok(/HTTP 429/.test(err), 'root-cause 429 must appear in the stored error: ' + err)
+})

@@ -17,9 +17,18 @@ function isTransient(e) {
 }
 
 async function withRetry(fn, sleep, attempts = 3) {
+  let firstMsg = null
   for (let i = 0; ; i++) {
     try { return await fn() } catch (e) {
-      if (i >= attempts - 1 || !isTransient(e)) throw e
+      const msg = String((e && e.message) || e)
+      if (firstMsg === null) firstMsg = msg
+      if (i >= attempts - 1 || !isTransient(e)) {
+        // Keep the ROOT CAUSE visible: the last attempt can fail differently
+        // (e.g. a 400) and would otherwise mask the rate-limit that actually
+        // killed the job — that misleads the user.
+        if (firstMsg && firstMsg !== msg) e.message = `${msg}（此前 ${i} 次尝试失败：${firstMsg}）`
+        throw e
+      }
       await sleep(5000 * (i + 1))
     }
   }
@@ -148,9 +157,18 @@ export async function runOne(entry, deps, inFlight = new Set()) {
 }
 
 // Reconstruct FormData for the ontology call from the (persisted) entry.
+// The base64 copy is preferred: it's a plain string, deterministic on every
+// retry, and immune to the reactive-proxy/staleness issues a live File object
+// routed through the store can hit. Never POST without bytes — the server's
+// "please upload a file" 400 would mislead the user about what went wrong.
 export function buildFormData(entry) {
   const fd = new FormData()
-  const file = entry.file || b64ToFile({ b64: entry.fileB64, name: entry.fileName, type: entry.fileType })
+  const file = entry.fileB64
+    ? b64ToFile({ b64: entry.fileB64, name: entry.fileName, type: entry.fileType })
+    : entry.file
+  if (!file || !file.size || !file.name) {
+    throw new Error('上传文件内容已丢失，请删除该卡片后重新提交')
+  }
   fd.append('files', file)
   fd.append('simulation_requirement', entry.prompt)
   return fd
