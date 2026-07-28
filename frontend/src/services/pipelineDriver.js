@@ -97,34 +97,88 @@ export function buildFormData(entry) {
 const _inFlight = new Set()
 let _started = false
 
+// One sync pass: pull server truth, reconcile/prune, push local changes.
+// Steps 1-4 ONLY — the advance logic (runOne/promoteHead) stays in the
+// interval callback so runOne is never awaited here (awaiting it would hold
+// the tick for the whole pipeline). Deps-injected so it is unit-testable.
+export async function syncTick({ store, pipeApi, api, toServerEntry }) {
+  // 1. pull server truth + merge (server owns status/membership)
+  try {
+    const r = await pipeApi.getPipeline()
+    store.applyServerMerge(((r.data || r).entries) || [])
+  } catch { /* offline: keep local, retry next tick */ }
+
+  // 2. reconcile manual runs, then prune (prune tombstones what it drops)
+  try {
+    const st = (await api.getSystemStatus()).data || {}
+    store.reconcileManual(st.running_simulations || [])
+  } catch { /* ignore */ }
+  store.prune()
+
+  // 3. push dirty entries AFTER reconcile, so a manual run's 'done' ships
+  for (const e of store.dirtyEntries()) {
+    const rev = e._rev
+    try {
+      await pipeApi.putPipelineEntry(toServerEntry(e))
+      store.markClean(e._tmpId, rev)
+    } catch { /* retry next tick */ }
+  }
+
+  // 4. retry outstanding deletes (tombstones)
+  for (const t of store.pendingTombstones()) {
+    try {
+      await pipeApi.deletePipelineEntry(t.tmpId)
+      store.ackTombstone(t.tmpId)
+    } catch { /* retry next tick */ }
+  }
+}
+
 // Mount once at app root. Dynamic-imports store + api so this module stays
-// unit-testable (runOne above pulls nothing heavy).
+// unit-testable (runOne/syncTick above pull nothing heavy).
 export async function startDriver() {
   if (_started) return
   _started = true
-  const { pipelineStore, driverTick } = await import('../store/pipelineQueue.js').then(async m => ({
-    pipelineStore: m.pipelineStore, driverTick: null,
-  }))
+  const { pipelineStore, toServerEntry } = await import('../store/pipelineQueue.js')
   const graph = await import('../api/graph.js')
   const sim = await import('../api/simulation.js')
   const report = await import('../api/report.js')
+  const pipeApi = await import('../api/pipeline.js')
   const api = { ...graph, ...sim, ...report }
   const sleep = (ms) => new Promise(r => setTimeout(r, ms))
   const signal = () => { bumpTick() }
   const deps = { api, store: pipelineStore, sleep, signal, buildFormData }
+  const store = pipelineStore
 
+  // initial hydration so a refresh shows the server's queue immediately
+  try {
+    const r = await pipeApi.getPipeline()
+    store.applyServerMerge(((r.data || r).entries) || [])
+  } catch { /* offline */ }
+
+  // Re-entrancy guard: the tick now awaits several calls; without this a slow
+  // tick would overlap itself (duplicate writes, stale merges landing late).
+  let tickBusy = false
   setInterval(async () => {
-    const store = pipelineStore
+    if (tickBusy) return
+    tickBusy = true
     try {
-      const st = (await api.getSystemStatus()).data || {}
-      store.reconcileManual(st.running_simulations || [])
-    } catch { /* ignore */ }
-    store.prune()   // clear done/failed ghosts so dead cards don't linger
-    const active = store.active.value
-    if (active && active.mode === 'auto') { runOne(active, deps, _inFlight); return }
-    if (!active) {
-      const h = store.promoteHead()
-      if (h && h.mode === 'auto') runOne({ ...h, status: 'ontology' }, deps, _inFlight)
+      await syncTick({ store, pipeApi, api, toServerEntry })
+
+      // advance (NOT awaited — runOne runs for minutes; awaiting it would
+      // hold tickBusy and starve the sync above). Display-only entries have
+      // no file bytes in this browser, so they are never driven.
+      const active = store.active.value
+      if (active && active.mode === 'auto' && !active._displayOnly) {
+        runOne(active, deps, _inFlight); return
+      }
+      if (!active) {
+        const h = store.promoteHead()
+        if (h && h.mode === 'auto' && !h._displayOnly) {
+          runOne({ ...h, status: 'ontology' }, deps, _inFlight)
+        }
+      }
+    } finally {
+      tickBusy = false
     }
   }, 3000)
 }
