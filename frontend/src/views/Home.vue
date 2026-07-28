@@ -317,6 +317,7 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import HistoryDatabase from '../components/HistoryDatabase.vue'
 import LanguageSwitcher from '../components/LanguageSwitcher.vue'
 import { getSimulationHistory, getSystemStatus } from '../api/simulation'
@@ -327,6 +328,9 @@ import { pipelineStore } from '../store/pipelineQueue'
 import { fileToB64 } from '../store/fileCodec'
 
 const router = useRouter()
+// 脚本里用 t()（模板的 $t 不需要）——漏了这行会让 showToast(t(...)) 直接
+// ReferenceError，提示条永远弹不出来
+const { t } = useI18n()
 
 // 表单数据
 const formData = ref({
