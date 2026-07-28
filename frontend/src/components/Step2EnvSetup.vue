@@ -633,6 +633,7 @@
 
 <script setup>
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
+import { useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { isAutoPilot } from '../utils/autoPilot'
 import {
@@ -644,6 +645,7 @@ import {
 } from '../api/simulation'
 
 const { t } = useI18n()
+const route = useRoute()
 
 const props = defineProps({
   simulationId: String,  // 从父组件传入
@@ -1098,11 +1100,19 @@ watch(() => props.systemLogs?.length, () => {
 })
 
 onMounted(() => {
-  // 自动开始准备流程
-  if (props.simulationId) {
-    addLog(t('log.step2Init'))
-    startPrepareSimulation()
+  if (!props.simulationId) return
+  addLog(t('log.step2Init'))
+  // observe=1：从历史卡片点进来「只看」——该任务由 app 级驱动器推进。
+  // 这里绝不能再 POST /prepare（会与驱动器重复触发、反复重跑准备流程），
+  // 只订阅进度轮询即可看到实时状态。
+  if (route.query.observe) {
+    phase.value = 1
+    startPolling()
+    startProfilesPolling()
+    return
   }
+  // 自动开始准备流程
+  startPrepareSimulation()
 })
 
 onUnmounted(() => {

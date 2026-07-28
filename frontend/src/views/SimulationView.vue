@@ -295,10 +295,14 @@ const refreshGraph = () => {
 
 onMounted(async () => {
   addLog(t('log.simViewInit'))
-  
-  // 检查并关闭正在运行的模拟（用户从 Step 3 返回时）
-  await checkAndStopRunningSimulation()
-  
+
+  // observe=1：从历史卡片点进来「只看」——该任务由 app 级驱动器推进，
+  // 绝不能在这里停掉正在运行的模拟（否则点一下就把进行中的任务打断）。
+  if (!route.query.observe) {
+    // 检查并关闭正在运行的模拟（用户从 Step 3 返回时）
+    await checkAndStopRunningSimulation()
+  }
+
   // 加载模拟数据
   loadSimulationData()
 })

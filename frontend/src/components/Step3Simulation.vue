@@ -287,7 +287,7 @@
 
 <script setup>
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { pipelineStore } from '../store/pipelineQueue'
 import {
@@ -317,6 +317,7 @@ const props = defineProps({
 const emit = defineEmits(['go-back', 'next-step', 'add-log', 'update-status'])
 
 const router = useRouter()
+const route = useRoute()
 
 // State
 const isGeneratingReport = ref(false)
@@ -744,9 +745,17 @@ watch(() => props.systemLogs?.length, () => {
 
 onMounted(() => {
   addLog(t('log.step3Init'))
-  if (props.simulationId) {
-    doStartSimulation()
+  if (!props.simulationId) return
+  // observe=1：从历史卡片点进来「只看」——该模拟由 app 级驱动器推进。
+  // 这里绝不能再 doStartSimulation()（它带 force:true，会把进行中的推演从头重启），
+  // 只订阅状态轮询即可看到实时轮次。
+  if (route.query.observe) {
+    phase.value = 1
+    startStatusPolling()
+    startDetailPolling()
+    return
   }
+  doStartSimulation()
 })
 
 onUnmounted(() => {

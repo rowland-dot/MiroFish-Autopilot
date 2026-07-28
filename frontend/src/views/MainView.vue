@@ -243,7 +243,9 @@ const loadProject = async () => {
       updatePhaseByStatus(res.data.status)
       addLog(`Project loaded. Status: ${res.data.status}`)
       
-      if (res.data.status === 'ontology_generated' && !res.data.graph_id) {
+      // observe=1：只看不动。该项目由 app 级驱动器推进，这里不得重新触发图谱构建
+      // （否则点进卡片就会把进行中的构建重启一遍）。
+      if (res.data.status === 'ontology_generated' && !res.data.graph_id && !route.query.observe) {
         await startBuildGraph()
       } else if (res.data.status === 'graph_building' && res.data.graph_build_task_id) {
         currentPhase.value = 1

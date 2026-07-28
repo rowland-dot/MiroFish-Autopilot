@@ -536,18 +536,22 @@ const truncateFilename = (filename, maxLength) => {
 // 点进卡片查看实时进度。乐观卡片（生成中/运行中）按当前阶段跳转到对应实时页面；
 // 真实历史记录仍打开详情弹窗。步骤页在自动驾驶标记关闭时只读展示，安全可看。
 // 返回 true 表示已跳转。
+// observe=1：只看不动。步骤页据此跳过所有副作用（停止模拟、重启构建、重跑 prepare），
+// 因为该任务由 app 级驱动器推进，页面只负责展示。
+const OBSERVE = { observe: '1' }
+
 const enterLiveView = (card) => {
   const simId = card.simulation_id
   if (card.status === 'running' && simId) {
-    router.push({ name: 'SimulationRun', params: { simulationId: simId } })      // 运行轮次页
+    router.push({ name: 'SimulationRun', params: { simulationId: simId }, query: OBSERVE })
     return true
   }
   if (simId) {
-    router.push({ name: 'Simulation', params: { simulationId: simId } })         // 环境/画像页
+    router.push({ name: 'Simulation', params: { simulationId: simId }, query: OBSERVE })
     return true
   }
   if (card._projectId) {
-    router.push({ name: 'Process', params: { projectId: card._projectId } })     // 图谱构建页
+    router.push({ name: 'Process', params: { projectId: card._projectId }, query: OBSERVE })
     return true
   }
   return false   // ontology 阶段：项目尚未创建，无页面可进
