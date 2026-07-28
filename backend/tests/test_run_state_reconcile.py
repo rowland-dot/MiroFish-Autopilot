@@ -93,3 +93,20 @@ def test_reconcile_manager_state_completed_when_rounds_done(tmp_path):
 
     with open(os.path.join(d, "state.json"), "r", encoding="utf-8") as f:
         assert json.load(f)["status"] == "completed"
+
+
+def test_manager_state_synced_even_when_run_state_already_terminal(tmp_path):
+    # run_state finished cleanly but SimulationManager's state.json stayed
+    # 'running' -> /api/simulation/list kept lying. Sync it regardless.
+    root = str(tmp_path)
+    d = os.path.join(root, "sim_z")
+    os.makedirs(d, exist_ok=True)
+    with open(os.path.join(d, "run_state.json"), "w", encoding="utf-8") as f:
+        json.dump({"runner_status": "completed", "current_round": 72, "total_rounds": 72}, f)
+    with open(os.path.join(d, "state.json"), "w", encoding="utf-8") as f:
+        json.dump({"simulation_id": "sim_z", "status": "running"}, f)
+
+    reconcile_run_states(root)
+
+    with open(os.path.join(d, "state.json"), "r", encoding="utf-8") as f:
+        assert json.load(f)["status"] == "completed"

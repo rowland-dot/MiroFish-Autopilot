@@ -49,6 +49,12 @@ def reconcile_run_states(run_state_dir: str) -> list:
             continue                      # corrupt/unreadable -> leave alone
         new_status = finalize_status(state)
         if not new_status:
+            # run_state is already terminal, but SimulationManager's state.json
+            # can still be stuck on 'running' (that is what made
+            # /api/simulation/list report a run that had finished). Sync it.
+            rs = (state or {}).get("runner_status")
+            if rs in ("completed", "stopped", "failed"):
+                _finalize_manager_state(os.path.join(run_state_dir, sim_id), rs)
             continue
         state["runner_status"] = new_status
         state["twitter_running"] = False

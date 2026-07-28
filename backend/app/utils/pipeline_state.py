@@ -92,21 +92,28 @@ def prune_entries(entries: list, now: datetime = None, ttl_hours: int = 24) -> l
     return out
 
 
-_TERMINAL_RUN = ("completed", "stopped", "failed")
+# Run-record values that mean "this simulation is NOT running". `idle` counts:
+# after a restart the record can be missing/reset, which is exactly the stale
+# case that used to pin an entry on 'running' forever.
+_NOT_RUNNING = ("completed", "stopped", "failed", "idle")
 
 
 def reconcile_with_runs(entries: list, run_status_of) -> list:
-    """Release entries whose simulation already finished. Pure.
+    """Release entries whose simulation is no longer running. Pure.
 
     The browser driver owns an entry's status, so if that browser dies (tab
     closed, restart) the entry can sit on 'running' forever and hold the slot,
-    blocking the queue. The simulation's own run record is the ground truth:
-    once it is terminal, the entry is done.
+    blocking the queue. The simulation's own run record is ground truth.
+
+    Only entries whose OWN status is 'running' are released: a pre-run stage
+    ('preparing', 'creating', ...) legitimately has an idle run record because
+    the run has not started yet. An unknown status (None — record missing or
+    unreadable) is never guessed at.
     """
     out = []
     for e in entries:
         sim_id = e.get("simId")
-        if sim_id and run_status_of(sim_id) in _TERMINAL_RUN:
+        if sim_id and e.get("status") == "running" and run_status_of(sim_id) in _NOT_RUNNING:
             out.append({**e, "status": "done"})
         else:
             out.append(e)

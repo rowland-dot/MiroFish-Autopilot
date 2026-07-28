@@ -100,3 +100,26 @@ def test_reconcile_with_runs_ignores_unknown_sims():
     from app.utils.pipeline_state import reconcile_with_runs
     entries = [{"tmpId": "a", "status": "running", "simId": "sim_x"}]
     assert reconcile_with_runs(entries, lambda s: None)[0]["status"] == "running"
+
+
+def test_reconcile_releases_running_entry_when_sim_is_idle():
+    # After a restart the run record can be gone/idle: no live run, so a
+    # pipeline entry still claiming 'running' is stale and must be released,
+    # otherwise it holds the slot forever.
+    from app.utils.pipeline_state import reconcile_with_runs
+    entries = [{"tmpId": "a", "status": "running", "simId": "sim_x"}]
+    assert reconcile_with_runs(entries, lambda s: "idle")[0]["status"] == "done"
+
+
+def test_reconcile_does_not_release_pre_run_stages_on_idle():
+    # 'preparing' with an idle run record is NORMAL (the run has not started).
+    from app.utils.pipeline_state import reconcile_with_runs
+    entries = [{"tmpId": "a", "status": "preparing", "simId": "sim_x"}]
+    assert reconcile_with_runs(entries, lambda s: "idle")[0]["status"] == "preparing"
+
+
+def test_reconcile_does_not_release_on_unknown_status():
+    # missing/unreadable record -> None -> do not guess, leave it alone
+    from app.utils.pipeline_state import reconcile_with_runs
+    entries = [{"tmpId": "a", "status": "running", "simId": "sim_x"}]
+    assert reconcile_with_runs(entries, lambda s: None)[0]["status"] == "running"
