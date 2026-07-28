@@ -129,7 +129,8 @@
     "creating": "创建中...",
     "enterEnvSetup": "进入环境搭建",
     "createSimulationFailed": "创建模拟失败: {error}",
-    "createSimulationException": "创建模拟异常: {error}"
+    "createSimulationException": "创建模拟异常: {error}",
+    "observeHint": "只看模式：该任务由系统自动推进，无需手动操作。"
   },
   "step2": {
     "simInstanceInit": "模拟实例初始化",

@@ -129,7 +129,8 @@
     "creating": "Creating...",
     "enterEnvSetup": "Enter Environment Setup",
     "createSimulationFailed": "Failed to create simulation: {error}",
-    "createSimulationException": "Simulation creation error: {error}"
+    "createSimulationException": "Simulation creation error: {error}",
+    "observeHint": "View-only: this job advances automatically — no action needed."
   },
   "step2": {
     "simInstanceInit": "Simulation Instance Initialization",

@@ -158,14 +158,16 @@
         <div class="card-content">
           <p class="api-note">POST /api/simulation/create</p>
           <p class="description">{{ $t('step1.buildCompleteDesc') }}</p>
-          <button 
-            class="action-btn" 
-            :disabled="currentPhase < 2 || creatingSimulation"
+          <button
+            class="action-btn"
+            :disabled="currentPhase < 2 || creatingSimulation || isObserving"
             @click="handleEnterEnvSetup"
           >
             <span v-if="creatingSimulation" class="spinner-sm"></span>
             {{ creatingSimulation ? $t('step1.creating') : $t('step1.enterEnvSetup') + ' ➝' }}
           </button>
+          <!-- 只看模式：任务由驱动器自动推进，禁止在此再建一个模拟 -->
+          <p v-if="isObserving" class="description">{{ $t('step1.observeHint') }}</p>
         </div>
       </div>
     </div>
@@ -214,6 +216,8 @@ const creatingSimulation = ref(false)
 
 // 进入环境搭建 - 创建 simulation 并跳转
 const handleEnterEnvSetup = async () => {
+  // 只看模式下禁止创建模拟（否则会在同一项目上再建一个幽灵任务）
+  if (isObserving.value) return
   if (!props.projectData?.project_id || !props.projectData?.graph_id) {
     console.error('缺少项目或图谱信息')
     return
@@ -257,6 +261,9 @@ const handleEnterEnvSetup = async () => {
 // 自动驾驶：图谱构建完成后自动进入环境搭建
 // （spec: docs/specs/2026-07-16-auto-pilot-pipeline-spec.md）
 watch(() => props.currentPhase, (phase) => {
+  // observe=1：从卡片点进来「只看」——该项目由 app 级驱动器推进。
+  // 这里绝不能自动建模拟：会在同一个项目上再建一个（幽灵任务）。
+  if (isObserving.value) return
   if (phase === 2 && isAutoPilot() && !creatingSimulation.value) {
     setTimeout(() => {
       if (isAutoPilot() && !creatingSimulation.value) handleEnterEnvSetup()
