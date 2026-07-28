@@ -102,7 +102,13 @@
     "layoutGraph": "Graph",
     "layoutSplit": "Split",
     "layoutWorkbench": "Workbench",
-    "stepNames": ["Graph Build", "Env Setup", "Run Simulation", "Report Generation", "Deep Interaction"]
+    "stepNames": [
+      "Graph Build",
+      "Env Setup",
+      "Run Simulation",
+      "Report Generation",
+      "Deep Interaction"
+    ]
   },
   "step1": {
     "ontologyGeneration": "Ontology Generation",
@@ -355,7 +361,14 @@
     "notStarted": "Not started",
     "roundsProgress": "{current}/{total} rounds",
     "untitledSimulation": "Untitled simulation",
-    "unknownFile": "Unknown file"
+    "unknownFile": "Unknown file",
+    "stageOntology": "Creating project…",
+    "stageBuilding": "Building graph…",
+    "stageCreating": "Creating simulation…",
+    "stagePreparing": "Setting up environment…",
+    "stageRunning": "Simulation running…",
+    "stageReporting": "Generating report…",
+    "stageWaitHint": "You'll be taken into the live view as soon as the project is created."
   },
   "api": {
     "projectNotFound": "Project not found: {id}",

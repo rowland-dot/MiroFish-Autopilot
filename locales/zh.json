@@ -102,7 +102,13 @@
     "layoutGraph": "图谱",
     "layoutSplit": "双栏",
     "layoutWorkbench": "工作台",
-    "stepNames": ["图谱构建", "环境搭建", "开始模拟", "报告生成", "深度互动"]
+    "stepNames": [
+      "图谱构建",
+      "环境搭建",
+      "开始模拟",
+      "报告生成",
+      "深度互动"
+    ]
   },
   "step1": {
     "ontologyGeneration": "本体生成",
@@ -355,7 +361,14 @@
     "notStarted": "未开始",
     "roundsProgress": "{current}/{total} 轮",
     "untitledSimulation": "未命名模拟",
-    "unknownFile": "未知文件"
+    "unknownFile": "未知文件",
+    "stageOntology": "正在创建项目…",
+    "stageBuilding": "正在构建图谱…",
+    "stageCreating": "正在创建推演…",
+    "stagePreparing": "正在搭建环境…",
+    "stageRunning": "推演运行中…",
+    "stageReporting": "正在生成报告…",
+    "stageWaitHint": "项目创建完成后将自动进入实时页面。"
   },
   "api": {
     "projectNotFound": "项目不存在: {id}",

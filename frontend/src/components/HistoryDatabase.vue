@@ -207,6 +207,21 @@
       </Transition>
     </Teleport>
 
+    <!-- 最早阶段（项目创建中）点卡片：显示实时阶段，拿到 id 后自动进入 -->
+    <Teleport to="body">
+      <div v-if="watchingCard" class="del-overlay" @click.self="watchingTmpId = null">
+        <div class="del-dialog">
+          <div class="del-icon">⏳</div>
+          <h3 class="del-title">{{ stageLabel(watchingCard) }}</h3>
+          <p class="del-body">{{ $t('history.stageWaitHint') }}</p>
+          <p class="del-target">{{ (watchingCard.files && watchingCard.files[0] && watchingCard.files[0].filename) || '' }}</p>
+          <div class="del-actions">
+            <button class="del-cancel" @click="watchingTmpId = null">{{ $t('history.deleteCancel') }}</button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
+
     <!-- 永久删除确认弹窗 -->
     <Teleport to="body">
       <div v-if="deleteTarget" class="del-overlay" @click.self="cancelDelete">
@@ -518,21 +533,53 @@ const truncateFilename = (filename, maxLength) => {
 
 // 点进卡片查看实时进度。乐观卡片（生成中/运行中）按当前阶段跳转到对应实时页面；
 // 真实历史记录仍打开详情弹窗。步骤页在自动驾驶标记关闭时只读展示，安全可看。
+// 返回 true 表示已跳转。
+const enterLiveView = (card) => {
+  const simId = card.simulation_id
+  if (card.status === 'running' && simId) {
+    router.push({ name: 'SimulationRun', params: { simulationId: simId } })      // 运行轮次页
+    return true
+  }
+  if (simId) {
+    router.push({ name: 'Simulation', params: { simulationId: simId } })         // 环境/画像页
+    return true
+  }
+  if (card._projectId) {
+    router.push({ name: 'Process', params: { projectId: card._projectId } })     // 图谱构建页
+    return true
+  }
+  return false   // ontology 阶段：项目尚未创建，无页面可进
+}
+
+const watchingTmpId = ref(null)   // 点了「还没建好项目」的卡片，等 id 出现自动进入
+
 const navigateToProject = (simulation) => {
   if (simulation._optimistic) {
-    const simId = simulation.simulation_id
-    if (simulation.status === 'running' && simId) {
-      router.push({ name: 'SimulationRun', params: { simulationId: simId } })   // 运行轮次页
-    } else if (simId) {
-      router.push({ name: 'Simulation', params: { simulationId: simId } })      // 环境/画像页
-    } else if (simulation._projectId) {
-      router.push({ name: 'Process', params: { projectId: simulation._projectId } })  // 图谱构建页
+    if (!enterLiveView(simulation)) {
+      // 最早阶段（正在创建项目）——先显示实时阶段，拿到 id 后自动跳转
+      watchingTmpId.value = simulation._tmpId
     }
-    // 更早（ontology 阶段，尚无 project_id）：暂无可看内容，忽略点击
     return
   }
   selectedProject.value = simulation
 }
+
+// 正在等待的卡片一旦拿到 project/sim id，自动进入实时页面
+watch(displayProjects, (list) => {
+  if (!watchingTmpId.value) return
+  const card = list.find(c => c._tmpId === watchingTmpId.value)
+  if (!card) { watchingTmpId.value = null; return }
+  if (enterLiveView(card)) watchingTmpId.value = null
+}, { deep: true })
+
+const watchingCard = computed(() =>
+  displayProjects.value.find(c => c._tmpId === watchingTmpId.value) || null)
+
+const STAGE_KEYS = {
+  ontology: 'stageOntology', building: 'stageBuilding', creating: 'stageCreating',
+  preparing: 'stagePreparing', running: 'stageRunning', reporting: 'stageReporting',
+}
+const stageLabel = (card) => t(`history.${STAGE_KEYS[card?.status] || 'stageOntology'}`)
 
 // 关闭弹窗
 const closeModal = () => {
