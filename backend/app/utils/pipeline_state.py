@@ -74,8 +74,13 @@ def remove_entry(entries: list, tmp_id: str) -> list:
     return [e for e in entries if e.get("tmpId") != tmp_id]
 
 
+# Defensive bound. Real capacity is 3 (1 active + 2 queued); this only stops a
+# buggy or looping client from growing the file without limit.
+MAX_ENTRIES = 20
+
+
 def prune_entries(entries: list, now: datetime = None, ttl_hours: int = 24) -> list:
-    """Drop finished entries and anything past the TTL. Pure."""
+    """Drop finished entries and anything past the TTL, capped. Pure."""
     now = now or datetime.now()
     cutoff = now - timedelta(hours=ttl_hours)
     out = []
@@ -89,7 +94,7 @@ def prune_entries(entries: list, now: datetime = None, ttl_hours: int = 24) -> l
         if updated < cutoff:
             continue
         out.append(e)
-    return out
+    return out[-MAX_ENTRIES:] if len(out) > MAX_ENTRIES else out
 
 
 # Run-record values that mean "this simulation is NOT running". `idle` counts:

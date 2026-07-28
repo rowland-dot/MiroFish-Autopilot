@@ -12,7 +12,9 @@ function mockApi(calls) {
     prepareSimulation: async () => (calls.push('prepare'), { data: { task_id: 'pt1' } }),
     getPrepareStatus: async () => ({ data: { status: 'completed' } }),
     startSimulation: async () => (calls.push('start'), { data: { runner_status: 'running' } }),
-    getRunStatus: async () => ({ data: { runner_status: 'completed' } }),
+    // realistic: the run is live for a poll, then finishes
+    getRunStatus: (() => { let n = 0; return async () => ({ data: { runner_status: n++ === 0 ? 'running' : 'completed' } }) })(),
+    getSystemStatus: async () => ({ data: { running_simulations: ['sim_1'] } }),
     generateReport: async () => (calls.push('report'), { data: { report_id: 'rep_1' } }),
   }
 }
@@ -39,6 +41,9 @@ test('runOne advances through the full sequence and backfills sim id', async () 
   assert.deepEqual(calls, ['ontology', 'build', 'create', 'prepare', 'start', 'report'])
   assert.equal(d._rec.sid, 'sim_1')                                  // backfilled
   assert.deepEqual(d._rec.statuses, ['building', 'creating', 'preparing', 'running', 'reporting', 'done'])
+  // 'running' must come AFTER the start call — marking it earlier let the
+  // server-side reconcile delete the card mid-pipeline.
+  assert.ok(d._rec.statuses.indexOf('running') > 0)
 })
 
 test('runOne polls the non-reused build task + prepare task', async () => {

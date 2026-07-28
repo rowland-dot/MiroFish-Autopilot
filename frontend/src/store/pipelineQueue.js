@@ -207,8 +207,23 @@ const _state = reactive({
   ),   // clear ghosts from a prior session on load
 })
 
+// Persist must never throw: a few-MB upload becomes ~1.33x as base64 and can
+// blow the ~5MB localStorage quota. If it does, retry WITHOUT the file bytes
+// (the queue/status still survives a refresh; only this browser's ability to
+// drive that entry is lost) rather than breaking every store mutation.
 function persist() {
-  if (typeof localStorage !== 'undefined') localStorage.setItem(LS_KEY, serialize(_state.q))
+  if (typeof localStorage === 'undefined') return
+  try {
+    localStorage.setItem(LS_KEY, serialize(_state.q))
+  } catch {
+    try {
+      const lean = {
+        ...(_state.q),
+        entries: _state.q.entries.map(({ fileB64, file, ...rest }) => rest),
+      }
+      localStorage.setItem(LS_KEY, serialize(lean))
+    } catch { /* give up on persistence; in-memory state still works */ }
+  }
 }
 
 // Mark an entry dirty (unacked local change) and bump its revision, so a

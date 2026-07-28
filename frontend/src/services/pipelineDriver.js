@@ -55,26 +55,36 @@ export async function runOne(entry, deps, inFlight = new Set()) {
           if (!PREPARED.includes(s)) await sleep(2000)
         } while (!PREPARED.includes(s))
       }
-      store.setStatus(id, 'running'); signal()
+      signal()
     }
 
     // run
     {
       await api.startSimulation({ simulation_id: simId, platform: 'parallel', force: true })
+      // NOTE: the entry stays 'preparing' until the run is OBSERVED live.
+      // Marking it 'running' before then let the server-side reconcile see a
+      // "running entry with no live run" and delete the card mid-pipeline.
+      // The backend may also legitimately QUEUE this start (slot busy), so we
+      // wait patiently and only treat "gone" as fatal AFTER it has been live.
       let rs
-      let goneStreak = 0     // consecutive polls where no live process exists
+      let wasLive = false
+      let goneStreak = 0
       do {
         rs = ((await api.getRunStatus(simId)).data || {}).runner_status
         if (TERMINAL_RUN.includes(rs)) break
-        // A restart can kill the subprocess and leave run_state stuck on
-        // 'running' forever. /api/status lists LIVE processes, so if the sim
-        // is absent there for several polls the run is dead — bail out
-        // instead of polling a corpse for eternity.
-        try {
-          const live = ((await api.getSystemStatus()).data || {}).running_simulations || []
+        let live = []
+        try { live = ((await api.getSystemStatus()).data || {}).running_simulations || [] } catch { /* ignore */ }
+        const isLive = live.includes(simId) || rs === 'running'
+        if (isLive && !wasLive) {
+          wasLive = true
+          store.setStatus(id, 'running'); signal()   // only now is it truly running
+        }
+        if (wasLive) {
+          // A restart kills the subprocess but leaves run_state stuck on
+          // 'running' forever — bail instead of polling a corpse.
           goneStreak = live.includes(simId) ? 0 : goneStreak + 1
-        } catch { goneStreak = 0 }
-        if (goneStreak >= 5) throw new Error('simulation process is gone (killed or restarted)')
+          if (goneStreak >= 5) throw new Error('simulation process is gone (killed or restarted)')
+        }
         await sleep(2000)
       } while (true)
     }

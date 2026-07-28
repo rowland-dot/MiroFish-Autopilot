@@ -132,3 +132,15 @@ def test_reconcile_keeps_pre_run_entry_with_missing_record():
     from app.utils.pipeline_state import reconcile_with_runs
     entries = [{"tmpId": "a", "status": "building", "simId": "sim_x"}]
     assert reconcile_with_runs(entries, lambda s: None)[0]["status"] == "building"
+
+
+def test_prune_caps_total_entries(tmp_path):
+    # Defensive bound: a looping/buggy client must not grow the file forever.
+    from app.utils.pipeline_state import prune_entries, MAX_ENTRIES
+    now = NOW
+    many = [{"tmpId": f"t{i}", "status": "queued", "updatedAt": now.isoformat()}
+            for i in range(MAX_ENTRIES + 10)]
+    out = prune_entries(many, now)
+    assert len(out) == MAX_ENTRIES
+    # keeps the most recent, drops the oldest
+    assert out[-1]["tmpId"] == f"t{MAX_ENTRIES + 9}"
