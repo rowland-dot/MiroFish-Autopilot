@@ -305,6 +305,11 @@
 
       <!-- 历史项目数据库 -->
       <HistoryDatabase />
+
+      <!-- 任务已创建提示条 -->
+      <Transition name="toast-fade">
+        <div v-if="toastMsg" class="job-toast">✓ {{ toastMsg }}</div>
+      </Transition>
     </div>
   </div>
 </template>
@@ -561,7 +566,20 @@ const enqueueInstantCard = async (mode) => {
     status: 'queued',
     projectId: null, buildTaskId: null, graphId: null, realSimId: null,
   })
+  // 任务已入列：清空 01 的文件选择，方便直接排下一个（提示词保留，常需复用）
+  files.value = []
+  if (fileInput.value) fileInput.value.value = ''
+  showToast(t('home.jobCreated'))
   return tmpId
+}
+
+// 轻量提示条（本页唯一用途，无需引入组件库）
+const toastMsg = ref('')
+let toastTimer = null
+const showToast = (msg) => {
+  toastMsg.value = msg
+  clearTimeout(toastTimer)
+  toastTimer = setTimeout(() => { toastMsg.value = '' }, 2600)
 }
 
 // 开始模拟（手动）- 立即插卡 + 跳转，逐步由 Step 页面驱动
@@ -1192,6 +1210,25 @@ const launch = () => {
   cursor: not-allowed;
   transform: none;
 }
+/* 任务已创建提示条 */
+.job-toast {
+  position: fixed;
+  left: 50%;
+  bottom: 32px;
+  transform: translateX(-50%);
+  z-index: 9999;
+  background: #111827;
+  color: #fff;
+  font-size: 0.82rem;
+  letter-spacing: 0.5px;
+  padding: 10px 18px;
+  border-radius: 4px;
+  box-shadow: 0 8px 20px -6px rgba(0,0,0,.35);
+  font-family: inherit;
+}
+.toast-fade-enter-active, .toast-fade-leave-active { transition: opacity .25s ease, transform .25s ease; }
+.toast-fade-enter-from, .toast-fade-leave-to { opacity: 0; transform: translateX(-50%) translateY(8px); }
+
 /* 队列已满：整个开始区变暗 + 提示 */
 .btn-section.queue-full { opacity: 0.7; }
 .queue-full-hint {

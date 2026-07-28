@@ -92,7 +92,8 @@
     "modelLabel": "Model selection",
     "modelDeepseekUnavailable": "DeepSeek key not set — using MiniMax. Add DEEPSEEK_API_KEY in Space secrets to enable.",
     "startEngine": "Start Engine",
-    "initializing": "Initializing..."
+    "initializing": "Initializing...",
+    "jobCreated": "Job created — added to the queue"
   },
   "autoPilot": {
     "pill": "AUTO-PILOT",
