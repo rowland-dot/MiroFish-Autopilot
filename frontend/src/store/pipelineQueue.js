@@ -9,7 +9,7 @@ const SLOT_LIMIT = 1
 const QUEUE_LIMIT = 2
 const FIRST_ACTIVE = 'ontology'
 
-export function makeQueue() { return { entries: [] } }
+export function makeQueue() { return { entries: [], tombstones: [] } }
 
 function activeCount(q) { return q.entries.filter(e => ACTIVE_STATUSES.includes(e.status)).length }
 function queuedCount(q) { return q.entries.filter(e => e.status === 'queued').length }
@@ -22,30 +22,30 @@ export function enqueue(q, entry) {
   if (isFull(q)) return q
   const startActive = activeCount(q) < SLOT_LIMIT
   const e = { ...entry, status: startActive ? FIRST_ACTIVE : 'queued' }
-  return { entries: [...q.entries, e] }
+  return { ...q, entries: [...q.entries, e] }
 }
 
 export function advanceStatus(q, tmpId, status) {
-  return { entries: q.entries.map(e => e._tmpId === tmpId ? { ...e, status } : e) }
+  return { ...q, entries: q.entries.map(e => e._tmpId === tmpId ? { ...e, status } : e) }
 }
 
 export function backfillSimId(q, tmpId, realSimId) {
-  return { entries: q.entries.map(e => e._tmpId === tmpId ? { ...e, realSimId } : e) }
+  return { ...q, entries: q.entries.map(e => e._tmpId === tmpId ? { ...e, realSimId } : e) }
 }
 
 // Set status on the entry matching a real simulation_id (Step pages know the
 // sim id, not the temp id). Used to release a manual entry's slot.
 export function advanceBySimId(q, realSimId, status) {
-  return { entries: q.entries.map(e => e.realSimId === realSimId ? { ...e, status } : e) }
+  return { ...q, entries: q.entries.map(e => e.realSimId === realSimId ? { ...e, status } : e) }
 }
 
 export function patchEntry(q, tmpId, patch) {
-  return { entries: q.entries.map(e => e._tmpId === tmpId ? { ...e, ...patch } : e) }
+  return { ...q, entries: q.entries.map(e => e._tmpId === tmpId ? { ...e, ...patch } : e) }
 }
 
 export function cancel(q, tmpId) { return remove(q, tmpId) }
 export function remove(q, tmpId) {
-  return { entries: q.entries.filter(e => e._tmpId !== tmpId) }
+  return { ...q, entries: q.entries.filter(e => e._tmpId !== tmpId) }
 }
 
 export function headToPromote(q) {
@@ -59,6 +59,7 @@ export function headToPromote(q) {
 export function reconcileManual(q, runningIds) {
   const running = new Set(runningIds || [])
   return {
+    ...q,
     entries: q.entries.map(e => {
       if (e.mode === 'manual' && e.status === 'running' && e.realSimId && !running.has(e.realSimId)) {
         return { ...e, status: 'done' }
@@ -86,16 +87,84 @@ export function mergeForDisplay(serverList, q) {
 
 // Drop finished/dead entries so they don't linger in localStorage as ghosts.
 export function pruneFinished(q) {
-  return { entries: q.entries.filter(e => e.status !== 'done' && e.status !== 'failed') }
+  return { ...q, entries: q.entries.filter(e => e.status !== 'done' && e.status !== 'failed') }
 }
 
 // ---- persistence (R8: survive hard refresh) ----
 const LS_KEY = 'mirofish_pipeline_queue'
 
-export function serialize(q) { return JSON.stringify({ entries: q.entries }) }
+export function serialize(q) { return JSON.stringify({ entries: q.entries, tombstones: q.tombstones || [] }) }
 export function deserialize(json) {
-  try { const o = JSON.parse(json); return { entries: Array.isArray(o.entries) ? o.entries : [] } }
-  catch { return makeQueue() }
+  try {
+    const o = JSON.parse(json)
+    return {
+      entries: Array.isArray(o.entries) ? o.entries : [],
+      tombstones: Array.isArray(o.tombstones) ? o.tombstones : [],
+    }
+  } catch { return makeQueue() }
+}
+
+// ---- server sync (pure; the driver injects the api) ----
+// 服务器只存状态/成员关系；文件字节始终只在本地 localStorage。
+export function toServerEntry(e) {
+  return {
+    tmpId: e._tmpId, mode: e.mode, status: e.status,
+    simId: e.realSimId || null, projectId: e.projectId || null,
+    graphId: e.graphId || null, buildTaskId: e.buildTaskId || null,
+    prompt: e.prompt, fileName: e.fileName, createdAt: e.createdAt,
+  }
+}
+
+const SERVER_OWNED = ['status', 'projectId', 'graphId', 'buildTaskId', 'mode', 'prompt', 'fileName', 'createdAt']
+
+function fromServerEntry(s) {
+  return {
+    _tmpId: s.tmpId, mode: s.mode, status: s.status,
+    realSimId: s.simId || null, projectId: s.projectId || null,
+    graphId: s.graphId || null, buildTaskId: s.buildTaskId || null,
+    prompt: s.prompt, fileName: s.fileName, createdAt: s.createdAt,
+    updatedAt: s.updatedAt, _seenOnServer: true, _dirty: false, _rev: 0,
+  }
+}
+
+// 合并规则见 spec §Frontend sync layer（1..6）
+export function mergeServerEntries(q, serverEntries) {
+  const serverList = Array.isArray(serverEntries) ? serverEntries : []
+  const byId = new Map(serverList.map(s => [s.tmpId, s]))
+  const tombs = Array.isArray(q.tombstones) ? q.tombstones : []
+  const tombById = new Map(tombs.map(t => [t.tmpId, t]))
+  const out = []
+
+  for (const l of q.entries) {
+    if (tombById.has(l._tmpId)) continue                   // rule 5: tombstone wins
+    const s = byId.get(l._tmpId)
+    if (!s) {
+      // rule 4: drop only if seen-then-missing; rule 6: dirty wins
+      if (l._seenOnServer && !l._dirty) continue
+      out.push(l); continue
+    }
+    if (l._dirty) { out.push({ ...l, _seenOnServer: true }); continue }   // rule 2
+    const mapped = fromServerEntry(s)                      // rule 3: field-union
+    const merged = { ...l }
+    for (const k of SERVER_OWNED) {
+      if (mapped[k] !== undefined && mapped[k] !== null) merged[k] = mapped[k]
+    }
+    if (mapped.realSimId) merged.realSimId = mapped.realSimId
+    merged.updatedAt = s.updatedAt
+    merged._seenOnServer = true
+    out.push(merged)
+  }
+
+  const localIds = new Set(q.entries.map(e => e._tmpId))
+  for (const s of serverList) {                            // rule 1: hydrate
+    if (localIds.has(s.tmpId) || tombById.has(s.tmpId)) continue
+    // no file bytes here -> display-only: never driven, never holds the slot
+    out.push({ ...fromServerEntry(s), _displayOnly: true })
+  }
+
+  // tombstone clears only after a DELETE ack AND a later response lacking the id
+  const kept = tombs.filter(t => !(t._ackedAt && !byId.has(t.tmpId)))
+  return { ...q, entries: out, tombstones: kept }
 }
 
 // ---- reactive singleton ----
