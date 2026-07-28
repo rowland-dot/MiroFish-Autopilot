@@ -96,9 +96,10 @@ def test_reconcile_with_runs_marks_finished_sims_done():
     assert out[2]["status"] == "queued"      # no sim yet -> untouched
 
 
-def test_reconcile_with_runs_ignores_unknown_sims():
+def test_reconcile_with_runs_leaves_entries_without_a_sim_alone():
+    # no simId yet (pre-create) -> nothing to reconcile against
     from app.utils.pipeline_state import reconcile_with_runs
-    entries = [{"tmpId": "a", "status": "running", "simId": "sim_x"}]
+    entries = [{"tmpId": "a", "status": "running", "simId": None}]
     assert reconcile_with_runs(entries, lambda s: None)[0]["status"] == "running"
 
 
@@ -118,8 +119,16 @@ def test_reconcile_does_not_release_pre_run_stages_on_idle():
     assert reconcile_with_runs(entries, lambda s: "idle")[0]["status"] == "preparing"
 
 
-def test_reconcile_does_not_release_on_unknown_status():
-    # missing/unreadable record -> None -> do not guess, leave it alone
+def test_reconcile_releases_running_entry_when_record_is_missing():
+    # A 'running' entry with NO run record means the run is gone (a restart
+    # wiped it) -> release, else it pins the slot forever. Safe: the owning
+    # browser is still dirty and re-POSTs if it really is alive.
     from app.utils.pipeline_state import reconcile_with_runs
     entries = [{"tmpId": "a", "status": "running", "simId": "sim_x"}]
-    assert reconcile_with_runs(entries, lambda s: None)[0]["status"] == "running"
+    assert reconcile_with_runs(entries, lambda s: None)[0]["status"] == "done"
+
+
+def test_reconcile_keeps_pre_run_entry_with_missing_record():
+    from app.utils.pipeline_state import reconcile_with_runs
+    entries = [{"tmpId": "a", "status": "building", "simId": "sim_x"}]
+    assert reconcile_with_runs(entries, lambda s: None)[0]["status"] == "building"

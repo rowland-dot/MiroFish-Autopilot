@@ -107,13 +107,18 @@ def reconcile_with_runs(entries: list, run_status_of) -> list:
 
     Only entries whose OWN status is 'running' are released: a pre-run stage
     ('preparing', 'creating', ...) legitimately has an idle run record because
-    the run has not started yet. An unknown status (None — record missing or
-    unreadable) is never guessed at.
+    the run has not started yet.
+
+    A MISSING record (None) also counts as not-running for a 'running' entry:
+    if the driver said it started a run and no run record exists, the run is
+    gone (restart wiped it). A false release self-corrects — the owning
+    browser's entry is still dirty and re-POSTs on the next tick.
     """
     out = []
     for e in entries:
         sim_id = e.get("simId")
-        if sim_id and e.get("status") == "running" and run_status_of(sim_id) in _NOT_RUNNING:
+        rs = run_status_of(sim_id) if sim_id else "skip"
+        if sim_id and e.get("status") == "running" and (rs is None or rs in _NOT_RUNNING):
             out.append({**e, "status": "done"})
         else:
             out.append(e)
