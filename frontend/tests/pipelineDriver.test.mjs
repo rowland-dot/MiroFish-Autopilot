@@ -12,8 +12,8 @@ function mockApi(calls) {
     prepareSimulation: async () => (calls.push('prepare'), { data: { task_id: 'pt1' } }),
     getPrepareStatus: async () => ({ data: { status: 'completed' } }),
     startSimulation: async () => (calls.push('start'), { data: { runner_status: 'running' } }),
-    // realistic: the run is live for a poll, then finishes
-    getRunStatus: (() => { let n = 0; return async () => ({ data: { runner_status: n++ === 0 ? 'running' : 'completed' } }) })(),
+    // realistic: idle before start (resume pre-check), live for a poll, then finishes
+    getRunStatus: (() => { let n = 0; const seq = ['idle', 'running']; return async () => ({ data: { runner_status: seq[n++] || 'completed' } }) })(),
     getSystemStatus: async () => ({ data: { running_simulations: ['sim_1'] } }),
     generateReport: async () => (calls.push('report'), { data: { report_id: 'rep_1' } }),
   }
@@ -71,4 +71,28 @@ test('runOne resumes from create when graphId already present (no rebuild)', asy
   const calls = []
   await runOne({ _tmpId: 't4', file: {}, prompt: 'p', projectId: 'proj_1', graphId: 'g1' }, deps(mockApi(calls)))
   assert.deepEqual(calls, ['create', 'prepare', 'start', 'report'])   // skipped ontology + build
+})
+
+// 恢复保护：刷新浏览器后 runOne 重入，绝不能 force 重启一个已完成/在跑的模拟
+test('resume on a COMPLETED run never calls start (no force-restart wipe)', async () => {
+  const calls = []
+  const api = mockApi(calls)
+  api.getRunStatus = async () => ({ data: { runner_status: 'completed' } })
+  const d = deps(api)
+  await runOne({ _tmpId: 'r1', file: {}, prompt: 'p', projectId: 'proj_1', graphId: 'g1', realSimId: 'sim_1', status: 'running' }, d)
+  assert.ok(!calls.includes('start'), 'must NOT restart a completed run')
+  assert.ok(calls.includes('report'))
+  assert.deepEqual(d._rec.statuses, ['reporting', 'done'])
+})
+
+test('resume on a LIVE run skips start and just polls to completion', async () => {
+  const calls = []
+  const api = mockApi(calls)
+  let n = 0
+  api.getRunStatus = async () => ({ data: { runner_status: n++ < 2 ? 'running' : 'completed' } })
+  const d = deps(api)
+  await runOne({ _tmpId: 'r2', file: {}, prompt: 'p', projectId: 'proj_1', graphId: 'g1', realSimId: 'sim_1', status: 'running' }, d)
+  assert.ok(!calls.includes('start'), 'must NOT re-start a live run')
+  assert.ok(d._rec.statuses.includes('running'))
+  assert.ok(calls.includes('report'))
 })

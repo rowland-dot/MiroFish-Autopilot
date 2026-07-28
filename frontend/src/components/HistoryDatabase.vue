@@ -451,11 +451,21 @@ const getProgressClass = (simulation) => {
   }
 }
 
+// 服务器时间戳是「无时区」的 ISO 串（容器时钟为 UTC）。直接 new Date()
+// 会按本地时区解析，本地显示会差好几个小时（甚至跨天显示成昨天）。
+// 无时区后缀的补 'Z' 按 UTC 解析；epoch 数字与带时区的串原样通过。
+const parseServerDate = (v) => {
+  if (typeof v === 'string' && v.includes('T') && !/(?:Z|[+-]\d{2}:?\d{2})$/.test(v)) {
+    return new Date(v + 'Z')
+  }
+  return new Date(v)
+}
+
 // 格式化日期（只显示日期部分）
 const formatDate = (dateStr) => {
   if (!dateStr) return ''
   try {
-    const date = new Date(dateStr)
+    const date = parseServerDate(dateStr)
     // Use local date components (like formatTime below) so the displayed day
     // matches the displayed time. toISOString() converts to UTC and can show
     // the wrong day for non-UTC clients near midnight.
@@ -472,7 +482,7 @@ const formatDate = (dateStr) => {
 const formatTime = (dateStr) => {
   if (!dateStr) return ''
   try {
-    const date = new Date(dateStr)
+    const date = parseServerDate(dateStr)
     const hours = date.getHours().toString().padStart(2, '0')
     const minutes = date.getMinutes().toString().padStart(2, '0')
     return `${hours}:${minutes}`

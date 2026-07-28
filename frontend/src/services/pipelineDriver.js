@@ -60,7 +60,15 @@ export async function runOne(entry, deps, inFlight = new Set()) {
 
     // run
     {
-      await api.startSimulation({ simulation_id: simId, platform: 'parallel', force: true })
+      // Resume guard: a browser refresh re-enters runOne with stored ids.
+      // Blindly POSTing start with force:true here RESTARTED an already
+      // finished 72/72 run from round 0. Check first: completed -> straight
+      // to report; already live -> just poll; only otherwise start.
+      const pre = ((await api.getRunStatus(simId)).data || {}).runner_status
+      if (pre !== 'completed') {
+        if (pre !== 'running') {
+          await api.startSimulation({ simulation_id: simId, platform: 'parallel', force: true })
+        }
       // NOTE: the entry stays 'preparing' until the run is OBSERVED live.
       // Marking it 'running' before then let the server-side reconcile see a
       // "running entry with no live run" and delete the card mid-pipeline.
@@ -87,6 +95,7 @@ export async function runOne(entry, deps, inFlight = new Set()) {
         }
         await sleep(2000)
       } while (true)
+      }
     }
 
     // report (Step 4) — auto-pilot means "auto to report", so the driver
