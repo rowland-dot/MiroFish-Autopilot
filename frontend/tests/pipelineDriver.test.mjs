@@ -96,3 +96,33 @@ test('resume on a LIVE run skips start and just polls to completion', async () =
   assert.ok(d._rec.statuses.includes('running'))
   assert.ok(calls.includes('report'))
 })
+
+test('resume with an existing reportId never regenerates the report', async () => {
+  const calls = []
+  const api = mockApi(calls)
+  api.getRunStatus = async () => ({ data: { runner_status: 'completed' } })
+  const d = deps(api)
+  await runOne({ _tmpId: 'r3', file: {}, prompt: 'p', projectId: 'proj_1', graphId: 'g1', realSimId: 'sim_1', reportId: 'rep_1', status: 'reporting' }, d)
+  assert.ok(!calls.includes('report'), 'must NOT regenerate an existing report')
+  assert.deepEqual(d._rec.statuses, ['reporting', 'done'])
+})
+
+test('build task failure fails the entry instead of spinning forever', async () => {
+  const calls = []
+  const api = mockApiPolling(calls)
+  api.getTaskStatus = async () => ({ data: { status: 'failed', error: 'boom' } })
+  const d = deps(api)
+  await runOne({ _tmpId: 'r4', file: {}, prompt: 'p' }, d)
+  assert.equal(d._rec.statuses.at(-1), 'failed')
+  assert.ok(!calls.includes('create'), 'must stop at the failed build')
+})
+
+test('prepare task failure fails the entry instead of spinning forever', async () => {
+  const calls = []
+  const api = mockApi(calls)
+  api.getPrepareStatus = async () => ({ data: { status: 'failed', error: 'boom' } })
+  const d = deps(api)
+  await runOne({ _tmpId: 'r5', file: {}, prompt: 'p' }, d)
+  assert.equal(d._rec.statuses.at(-1), 'failed')
+  assert.ok(!calls.includes('start'), 'must stop at the failed prepare')
+})

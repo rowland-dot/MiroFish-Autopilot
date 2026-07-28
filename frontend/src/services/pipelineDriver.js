@@ -33,7 +33,12 @@ export async function runOne(entry, deps, inFlight = new Set()) {
         graphId = d.graph_id
       } else if (d.task_id) {
         store.patch(id, { buildTaskId: d.task_id })
-        while (((await api.getTaskStatus(d.task_id)).data || {}).status !== 'completed') { await sleep(2000) }
+        for (;;) {
+          const ts = ((await api.getTaskStatus(d.task_id)).data || {})
+          if (ts.status === 'completed') break
+          if (ts.status === 'failed') throw new Error('graph build failed: ' + (ts.error || ''))
+          await sleep(2000)
+        }
         graphId = ((await api.getProject(projectId)).data || {}).graph_id
       }
       store.patch(id, { graphId }); store.setStatus(id, 'creating'); signal()
@@ -49,11 +54,12 @@ export async function runOne(entry, deps, inFlight = new Set()) {
     {
       const d = (await api.prepareSimulation({ simulation_id: simId, use_llm_for_profiles: true, parallel_profile_count: 5 })).data || {}
       if (!d.already_prepared && d.task_id) {
-        let s
-        do {
-          s = ((await api.getPrepareStatus({ task_id: d.task_id, simulation_id: simId })).data || {}).status
-          if (!PREPARED.includes(s)) await sleep(2000)
-        } while (!PREPARED.includes(s))
+        for (;;) {
+          const ps = ((await api.getPrepareStatus({ task_id: d.task_id, simulation_id: simId })).data || {})
+          if (PREPARED.includes(ps.status)) break
+          if (ps.status === 'failed') throw new Error('prepare failed: ' + (ps.error || ''))
+          await sleep(2000)
+        }
       }
       signal()
     }
@@ -103,11 +109,16 @@ export async function runOne(entry, deps, inFlight = new Set()) {
     // does not fail the whole pipeline (the run + graph still succeeded).
     {
       store.setStatus(id, 'reporting'); signal()
-      try {
-        const r = (await api.generateReport({ simulation_id: simId, force_regenerate: true })).data || {}
-        // keep the report id so an observing page can follow through to it
-        if (r.report_id) store.patch(id, { reportId: r.report_id })
-      } catch (e) { /* report is best-effort */ }
+      // Resume guard: a stored reportId means the report already exists —
+      // regenerating with force_regenerate would burn LLM calls and
+      // overwrite the finished report on every browser refresh.
+      if (!entry.reportId) {
+        try {
+          const r = (await api.generateReport({ simulation_id: simId, force_regenerate: true })).data || {}
+          // keep the report id so an observing page can follow through to it
+          if (r.report_id) store.patch(id, { reportId: r.report_id })
+        } catch (e) { /* report is best-effort */ }
+      }
       store.setStatus(id, 'done'); signal()
     }
   } catch (e) {
