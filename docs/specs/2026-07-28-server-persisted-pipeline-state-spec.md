@@ -195,12 +195,30 @@ unit-testable, no fetch, no DOM:
    **elsewhere** (another tab) — otherwise a cross-tab cancel would leave
    a permanent local ghost.
 
-**Driver skips unrunnable entries.** An entry hydrated from the server in
-a browser that lacks its file bytes (localStorage cleared, different
-browser) is **display-only**: the driver refuses to advance it (guard:
-no `fileB64` and no `projectId` → skip). It still renders, and the TTL
-prune eventually clears it. Known, accepted limitation of keeping the
-driver browser-side.
+**Display-only entries (hydrated without their file bytes).** An entry
+hydrated from the server in a browser that lacks its bytes (localStorage
+cleared, a different browser/tab) is flagged `_displayOnly`. Rules:
+
+- The driver **never advances it** — at BOTH advance call sites (the
+  active entry and `promoteHead`) — because `buildFormData` would throw
+  on missing bytes and mark a live job `failed`.
+- It **does not consume the local slot** (excluded from `activeEntry` /
+  `activeCount` / `headToPromote`). Otherwise a browser holding another
+  browser's entry would deadlock its own queue until the 24h TTL.
+- **Why that is safe:** the backend already enforces slot=1 + queue=2 for
+  OASIS runs (`services/simulation_queue.py`), so the heavy run path is
+  serialised server-side regardless of what any browser does. The
+  frontend slot only paces the lighter pre-run stages (ontology, graph
+  build, profile prep).
+
+**B16 — display-only entry never blocks and never runs.** Entry: a
+second browser hydrates an entry it has no bytes for. Result: the card
+renders; the driver skips it at both advance sites; it does not count
+toward the slot, so this browser can still start its own pipeline.
+
+(Rejected alternative: a heartbeat + staleness-reclaim scheme. It added
+a race where a slow tick starves the heartbeat and another tab deletes a
+*live* job, and it is unnecessary given the server-side run queue.)
 
 **Every membership/status mutation syncs** (exhaustive list — the review
 found four missing):
