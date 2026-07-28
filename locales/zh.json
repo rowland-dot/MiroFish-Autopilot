@@ -89,7 +89,7 @@
     "graphVizOn": "开启",
     "graphVizOff": "关闭",
     "graphVizHint": "实时知识图谱仅供展示。关闭可节省 Zep 读取额度，不影响报告质量。",
-    "modelLabel": "模型",
+    "modelLabel": "模型选择",
     "modelDeepseekUnavailable": "DeepSeek 密钥未配置——当前使用 MiniMax。在 Space secrets 添加 DEEPSEEK_API_KEY 后可用。",
     "startEngine": "启动引擎",
     "initializing": "初始化中..."
