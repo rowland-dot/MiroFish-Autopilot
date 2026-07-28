@@ -25,3 +25,23 @@ def test_a_pending_task_is_busy():
 
 def test_mixed_completed_and_pending_is_busy():
     assert is_busy(running_simulations=[], task_statuses=["completed", "pending"]) is True
+
+
+def test_busy_includes_active_pipeline_entries():
+    # The deploy guard reads `busy`. A job in ontology/graph-build/prepare has
+    # NO live OASIS subprocess, so busy was False and deploys killed it.
+    from app.utils.system_status import is_busy
+    active_pipeline = [{"tmpId": "a", "status": "preparing"}]
+    assert is_busy([], [], pipeline_entries=active_pipeline) is True
+
+
+def test_busy_ignores_queued_and_finished_pipeline_entries():
+    from app.utils.system_status import is_busy
+    idle = [{"tmpId": "a", "status": "queued"}, {"tmpId": "b", "status": "done"}]
+    assert is_busy([], [], pipeline_entries=idle) is False
+
+
+def test_busy_backwards_compatible_without_pipeline_arg():
+    from app.utils.system_status import is_busy
+    assert is_busy([], []) is False
+    assert is_busy(["sim_1"], []) is True
