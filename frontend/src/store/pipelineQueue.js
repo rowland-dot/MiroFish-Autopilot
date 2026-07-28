@@ -78,9 +78,11 @@ export function reconcileManual(q, runningIds) {
 // Merge server history with optimistic entries. Server record wins; an
 // optimistic entry whose realSimId is already in the server list is dropped.
 export function mergeForDisplay(serverList, q) {
+  const live = q.entries.filter(e => e.status !== 'done' && e.status !== 'failed')
   const serverIds = new Set(serverList.map(r => r.simulation_id))
-  const optimistic = q.entries
-    .filter(e => e.status !== 'done' && e.status !== 'failed')   // drop finished + dead ghosts
+
+  // still-optimistic entries: no server record yet
+  const optimistic = live
     .filter(e => !(e.realSimId && serverIds.has(e.realSimId)))
     .map(e => ({
       _optimistic: true, _tmpId: e._tmpId, simulation_id: e.realSimId || null,
@@ -88,7 +90,18 @@ export function mergeForDisplay(serverList, q) {
       status: e.status, files: [{ filename: e.fileName }],
       simulation_requirement: e.prompt, created_at: e.createdAt,
     }))
-  return [...optimistic, ...serverList]
+
+  // Once the sim record exists server-side we show the REAL record — but keep
+  // its live pipeline status attached, else the card loses its badge and falls
+  // back to server sort order while the pipeline is still mid-flight.
+  const bySimId = new Map(live.filter(e => e.realSimId).map(e => [e.realSimId, e]))
+  const annotated = serverList.map(r => {
+    const e = bySimId.get(r.simulation_id)
+    return e ? { ...r, _pipelineStatus: e.status, _tmpId: e._tmpId, _projectId: e.projectId || null } : r
+  })
+  const inFlight = annotated.filter(r => r._pipelineStatus)   // float to the top
+  const rest = annotated.filter(r => !r._pipelineStatus)
+  return [...optimistic, ...inFlight, ...rest]
 }
 
 // Drop finished/dead entries so they don't linger in localStorage as ghosts.

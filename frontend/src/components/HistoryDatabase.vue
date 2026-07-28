@@ -273,16 +273,18 @@ const isRecordComplete = (project) => {
 }
 // 乐观卡片用 store 状态；真实历史记录只信 /api/status 的实时 id，
 // 绝不用服务器记录里的 status 字段（那可能是过期的，会误报运行中）。
+// 流水线阶段：乐观卡片用自身 status；已有服务器记录的用 _pipelineStatus（合并时附加）
+const pipelineStage = (p) => p._optimistic ? p.status : p._pipelineStatus
 const isCardQueued = (project) =>
   project._optimistic
     ? project.status === 'queued'
-    : isQueued(project.simulation_id, queuedIds.value)
+    : (pipelineStage(project) === 'queued' || isQueued(project.simulation_id, queuedIds.value))
 const isCardRunning = (project) =>
   project._optimistic
     ? project.status === 'running'
-    : (isQueued(project.simulation_id, runningIds.value) && !isRecordComplete(project))
-const isCardGenerating = (project) =>
-  !!project._optimistic && GEN_STATUSES.includes(project.status)
+    : ((pipelineStage(project) === 'running' || isQueued(project.simulation_id, runningIds.value))
+       && !isRecordComplete(project))
+const isCardGenerating = (project) => GEN_STATUSES.includes(pipelineStage(project))
 
 const refreshQueueState = async () => {
   try {
@@ -554,9 +556,10 @@ const enterLiveView = (card) => {
 const watchingTmpId = ref(null)   // 点了「还没建好项目」的卡片，等 id 出现自动进入
 
 const navigateToProject = (simulation) => {
-  if (simulation._optimistic) {
-    if (!enterLiveView(simulation)) {
-      // 最早阶段（正在创建项目）——先显示实时阶段，拿到 id 后自动跳转
+  // 乐观卡片，或仍在流水线中的真实记录 -> 进入实时页面
+  if (simulation._optimistic || simulation._pipelineStatus) {
+    if (!enterLiveView({ ...simulation, status: pipelineStage(simulation) })) {
+      // 最早阶段（正在准备）——先显示实时阶段，拿到 id 后自动跳转
       watchingTmpId.value = simulation._tmpId
     }
     return

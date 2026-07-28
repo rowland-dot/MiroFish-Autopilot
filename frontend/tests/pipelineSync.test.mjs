@@ -78,3 +78,21 @@ test('toServerEntry maps names and omits file bytes', () => {
   assert.equal(s.fileB64, undefined)
   assert.equal(s.fileType, undefined)
 })
+
+test('in-flight sim keeps its pipeline status and floats above older records', async () => {
+  const { mergeForDisplay } = await import('../src/store/pipelineQueue.js')
+  const q = { entries: [
+    { _tmpId: 'a', status: 'queued', fileName: 'f', prompt: 'p' },              // still optimistic
+    { _tmpId: 'b', status: 'preparing', realSimId: 'sim_1', fileName: 'f', prompt: 'p' },
+  ], tombstones: [] }
+  const server = [
+    { simulation_id: 'sim_old', created_at: '2026-07-23' },
+    { simulation_id: 'sim_1', created_at: '2026-07-28' },                        // the in-flight one
+  ]
+  const out = mergeForDisplay(server, q)
+  const inflight = out.find(c => c.simulation_id === 'sim_1')
+  assert.equal(inflight._pipelineStatus, 'preparing')   // keeps its badge source
+  assert.equal(out.indexOf(inflight), 1)                // right after the optimistic card
+  assert.ok(out.indexOf(inflight) < out.findIndex(c => c.simulation_id === 'sim_old'))
+  assert.equal(out.filter(c => c.simulation_id === 'sim_1').length, 1)   // no duplicate
+})
