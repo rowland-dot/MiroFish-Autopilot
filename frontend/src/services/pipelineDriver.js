@@ -95,7 +95,9 @@ export async function runOne(entry, deps, inFlight = new Set()) {
     {
       store.setStatus(id, 'reporting'); signal()
       try {
-        await api.generateReport({ simulation_id: simId, force_regenerate: true })
+        const r = (await api.generateReport({ simulation_id: simId, force_regenerate: true })).data || {}
+        // keep the report id so an observing page can follow through to it
+        if (r.report_id) store.patch(id, { reportId: r.report_id })
       } catch (e) { /* report is best-effort */ }
       store.setStatus(id, 'done'); signal()
     }

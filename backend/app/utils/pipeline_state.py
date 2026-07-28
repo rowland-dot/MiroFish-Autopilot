@@ -21,7 +21,7 @@ _LOCK = threading.Lock()
 
 # 服务器保存的字段（不含文件字节：太大且属于浏览器本地）
 SERVER_FIELDS = ("tmpId", "mode", "status", "simId", "projectId", "graphId",
-                 "buildTaskId", "prompt", "fileName", "createdAt", "updatedAt")
+                 "buildTaskId", "reportId", "prompt", "fileName", "createdAt", "updatedAt")
 
 
 def default_path() -> str:

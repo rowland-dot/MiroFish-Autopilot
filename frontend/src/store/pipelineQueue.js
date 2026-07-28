@@ -142,17 +142,19 @@ export function toServerEntry(e) {
     tmpId: e._tmpId, mode: e.mode, status: e.status,
     simId: e.realSimId || null, projectId: e.projectId || null,
     graphId: e.graphId || null, buildTaskId: e.buildTaskId || null,
+    reportId: e.reportId || null,
     prompt: e.prompt, fileName: e.fileName, createdAt: e.createdAt,
   }
 }
 
-const SERVER_OWNED = ['status', 'projectId', 'graphId', 'buildTaskId', 'mode', 'prompt', 'fileName', 'createdAt']
+const SERVER_OWNED = ['status', 'projectId', 'graphId', 'buildTaskId', 'reportId', 'mode', 'prompt', 'fileName', 'createdAt']
 
 function fromServerEntry(s) {
   return {
     _tmpId: s.tmpId, mode: s.mode, status: s.status,
     realSimId: s.simId || null, projectId: s.projectId || null,
     graphId: s.graphId || null, buildTaskId: s.buildTaskId || null,
+    reportId: s.reportId || null,
     prompt: s.prompt, fileName: s.fileName, createdAt: s.createdAt,
     updatedAt: s.updatedAt, _seenOnServer: true, _dirty: false, _rev: 0,
   }
