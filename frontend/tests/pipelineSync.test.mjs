@@ -92,7 +92,19 @@ test('in-flight sim keeps its pipeline status and floats above older records', a
   const out = mergeForDisplay(server, q)
   const inflight = out.find(c => c.simulation_id === 'sim_1')
   assert.equal(inflight._pipelineStatus, 'preparing')   // keeps its badge source
-  assert.equal(out.indexOf(inflight), 1)                // right after the optimistic card
+  assert.equal(out.indexOf(inflight), 0)                // ACTIVE sorts ahead of queued
   assert.ok(out.indexOf(inflight) < out.findIndex(c => c.simulation_id === 'sim_old'))
   assert.equal(out.filter(c => c.simulation_id === 'sim_1').length, 1)   // no duplicate
+})
+
+test('active job sorts ahead of a queued job (even when queued is optimistic)', async () => {
+  const { mergeForDisplay } = await import('../src/store/pipelineQueue.js')
+  const q = { entries: [
+    { _tmpId: 'q1', status: 'queued', fileName: 'f', prompt: 'p' },              // no server record
+    { _tmpId: 'r1', status: 'preparing', realSimId: 'sim_1', fileName: 'f', prompt: 'p' },
+  ], tombstones: [] }
+  const out = mergeForDisplay([{ simulation_id: 'sim_1' }, { simulation_id: 'sim_old' }], q)
+  assert.equal(out[0].simulation_id, 'sim_1')    // ACTIVE first
+  assert.equal(out[1]._tmpId, 'q1')              // queued second
+  assert.equal(out[2].simulation_id, 'sim_old')  // history last
 })

@@ -99,9 +99,21 @@ export function mergeForDisplay(serverList, q) {
     const e = bySimId.get(r.simulation_id)
     return e ? { ...r, _pipelineStatus: e.status, _tmpId: e._tmpId, _projectId: e.projectId || null } : r
   })
-  const inFlight = annotated.filter(r => r._pipelineStatus)   // float to the top
+  const inFlight = annotated.filter(r => r._pipelineStatus)
   const rest = annotated.filter(r => !r._pipelineStatus)
-  return [...optimistic, ...inFlight, ...rest]
+
+  // Order by PIPELINE STAGE, not by bucket: an active job must sit ahead of a
+  // queued one even though the queued card is still "optimistic" (no server
+  // record) while the active one has already become a real record.
+  const stageOf = (c) => c._optimistic ? c.status : c._pipelineStatus
+  const rank = (c) => {
+    const s = stageOf(c)
+    if (ACTIVE_STATUSES.includes(s)) return 0     // running / preparing / ... first
+    if (s === 'queued') return 1                  // then waiting
+    return 2
+  }
+  const pipelineCards = [...optimistic, ...inFlight].sort((a, b) => rank(a) - rank(b))
+  return [...pipelineCards, ...rest]
 }
 
 // Drop finished/dead entries so they don't linger in localStorage as ghosts.
