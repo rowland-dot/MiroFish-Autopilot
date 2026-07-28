@@ -11,10 +11,16 @@ const FIRST_ACTIVE = 'ontology'
 
 export function makeQueue() { return { entries: [], tombstones: [] } }
 
-function activeCount(q) { return q.entries.filter(e => ACTIVE_STATUSES.includes(e.status)).length }
-function queuedCount(q) { return q.entries.filter(e => e.status === 'queued').length }
+// Display-only entries (hydrated from the server in a browser without their
+// file bytes) never hold the slot and are never driven — otherwise another
+// browser's entries would deadlock this one's queue. Safe because the backend
+// enforces slot=1/queue=2 for OASIS runs itself (services/simulation_queue.py).
+const drivable = (e) => !e._displayOnly
 
-export function activeEntry(q) { return q.entries.find(e => ACTIVE_STATUSES.includes(e.status)) || null }
+function activeCount(q) { return q.entries.filter(e => drivable(e) && ACTIVE_STATUSES.includes(e.status)).length }
+function queuedCount(q) { return q.entries.filter(e => drivable(e) && e.status === 'queued').length }
+
+export function activeEntry(q) { return q.entries.find(e => drivable(e) && ACTIVE_STATUSES.includes(e.status)) || null }
 export function isFull(q) { return activeCount(q) >= SLOT_LIMIT && queuedCount(q) >= QUEUE_LIMIT }
 export function capacityFull(q) { return isFull(q) }
 
@@ -50,7 +56,7 @@ export function remove(q, tmpId) {
 
 export function headToPromote(q) {
   if (activeCount(q) >= SLOT_LIMIT) return null
-  return q.entries.find(e => e.status === 'queued') || null
+  return q.entries.find(e => drivable(e) && e.status === 'queued') || null
 }
 
 // A started manual entry whose sim is no longer running is finished -> done
@@ -179,26 +185,86 @@ const _state = reactive({
 function persist() {
   if (typeof localStorage !== 'undefined') localStorage.setItem(LS_KEY, serialize(_state.q))
 }
-function mutate(fn) { _state.q = fn(_state.q); persist() }
+
+// Mark an entry dirty (unacked local change) and bump its revision, so a
+// server response that raced the change cannot roll it back, and a stale
+// POST ack cannot clear a newer change.
+function markDirty(q, tmpId) {
+  if (!tmpId) return q
+  return {
+    ...q,
+    entries: q.entries.map(e => e._tmpId === tmpId
+      ? { ...e, _dirty: true, _rev: (e._rev || 0) + 1 }
+      : e),
+  }
+}
+
+function mutate(fn, dirtyId) {
+  let next = fn(_state.q)
+  if (dirtyId) next = markDirty(next, dirtyId)
+  _state.q = next
+  persist()
+}
+
+function addTombstones(q, ids) {
+  const have = new Set((q.tombstones || []).map(t => t.tmpId))
+  const added = ids.filter(id => id && !have.has(id))
+    .map(id => ({ tmpId: id, _deleted: true, _ackedAt: null }))
+  return { ...q, tombstones: [...(q.tombstones || []), ...added] }
+}
+
+const simIdToTmp = (q, simId) => (q.entries.find(e => e.realSimId === simId) || {})._tmpId
 
 export const pipelineStore = {
   entries: computed(() => _state.q.entries),
   active: computed(() => activeEntry(_state.q)),
   capacityFull: computed(() => capacityFull(_state.q)),
-  add: (entry) => mutate(q => enqueue(q, entry)),
-  setStatus: (id, s) => mutate(q => advanceStatus(q, id, s)),
-  setSimId: (id, sid) => mutate(q => backfillSimId(q, id, sid)),
-  setStatusBySimId: (sid, s) => mutate(q => advanceBySimId(q, sid, s)),
-  patch: (id, p) => mutate(q => patchEntry(q, id, p)),
-  cancel: (id) => mutate(q => cancel(q, id)),
-  remove: (id) => mutate(q => remove(q, id)),
-  reconcileManual: (runningIds) => mutate(q => reconcileManual(q, runningIds)),
-  prune: () => mutate(q => pruneFinished(q)),
+
+  // A brand-new entry is revision 0 and already unacked — no extra bump.
+  add: (entry) => mutate(q => enqueue(q, { ...entry, _rev: 0, _dirty: true, _seenOnServer: false })),
+  setStatus: (id, s) => mutate(q => advanceStatus(q, id, s), id),
+  setSimId: (id, sid) => mutate(q => backfillSimId(q, id, sid), id),
+  setStatusBySimId: (sid, s) => mutate(q => advanceBySimId(q, sid, s), simIdToTmp(_state.q, sid)),
+  patch: (id, p) => mutate(q => patchEntry(q, id, p), id),
+  reconcileManual: (runningIds) => {
+    // mark every entry this flips to done as dirty, so the status reaches the server
+    const flipped = _state.q.entries
+      .filter(e => e.mode === 'manual' && e.status === 'running' && e.realSimId
+                   && !(runningIds || []).includes(e.realSimId))
+      .map(e => e._tmpId)
+    mutate(q => flipped.reduce((acc, id) => markDirty(acc, id), reconcileManual(q, runningIds)))
+  },
+
+  // Removal always leaves a tombstone: it suppresses a stale server copy and
+  // the driver retries the DELETE until the server converges.
+  cancel: (id) => mutate(q => addTombstones(cancel(q, id), [id])),
+  remove: (id) => mutate(q => addTombstones(remove(q, id), [id])),
+  prune: () => mutate(q => {
+    const dropped = q.entries.filter(e => e.status === 'done' || e.status === 'failed').map(e => e._tmpId)
+    return addTombstones(pruneFinished(q), dropped)
+  }),
+
   promoteHead: () => {
     const h = headToPromote(_state.q)
-    if (h) mutate(q => advanceStatus(q, h._tmpId, 'ontology'))
+    if (h) mutate(q => advanceStatus(q, h._tmpId, 'ontology'), h._tmpId)
     return h
   },
+
+  // ---- server sync ----
+  applyServerMerge: (serverEntries) => mutate(q => mergeServerEntries(q, serverEntries)),
+  dirtyEntries: () => _state.q.entries.filter(e => e._dirty),
+  tombstones: () => _state.q.tombstones || [],
+  pendingTombstones: () => (_state.q.tombstones || []).filter(t => !t._ackedAt),
+  markClean: (tmpId, rev) => mutate(q => ({
+    ...q,
+    entries: q.entries.map(e => (e._tmpId === tmpId && e._rev === rev) ? { ...e, _dirty: false } : e),
+  })),
+  ackTombstone: (tmpId) => mutate(q => ({
+    ...q,
+    tombstones: (q.tombstones || []).map(t => t.tmpId === tmpId ? { ...t, _ackedAt: Date.now() } : t),
+  })),
+
+  reset: () => { _state.q = makeQueue(); persist() },   // test helper
   raw: () => _state.q,
 }
 
