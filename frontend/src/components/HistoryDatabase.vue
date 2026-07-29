@@ -288,7 +288,11 @@ const isCardQueued = (project) =>
 const isCardRunning = (project) =>
   project._optimistic
     ? project.status === 'running'
-    : (isQueued(project.simulation_id, runningIds.value) && !isRecordComplete(project))
+    // 有流水线条目的卡片信条目阶段（服务器会释放僵尸 running 条目，可信）。
+    // 没有条目的普通历史记录退回「实时进程列表 + 未跑满轮次」的启发式——
+    // 只用启发式会在最后一轮（72/72 仍在收尾）误判为已完成而丢掉徽标。
+    : (pipelineStage(project) === 'running'
+        || (isQueued(project.simulation_id, runningIds.value) && !isRecordComplete(project)))
 const isCardGenerating = (project) => GEN_STATUSES.includes(pipelineStage(project))
 const isCardFailed = (project) => pipelineStage(project) === 'failed'
 
@@ -563,23 +567,18 @@ const truncateFilename = (filename, maxLength) => {
 // 返回 true 表示已跳转。
 // observe=1：只看不动。步骤页据此跳过所有副作用（停止模拟、重启构建、重跑 prepare），
 // 因为该任务由 app 级驱动器推进，页面只负责展示。
-const OBSERVE = { observe: '1' }
-
 const enterLiveView = (card) => {
-  const simId = card.simulation_id
-  if (card.status === 'running' && simId) {
-    router.push({ name: 'SimulationRun', params: { simulationId: simId }, query: OBSERVE })
-    return true
-  }
-  if (simId) {
-    router.push({ name: 'Simulation', params: { simulationId: simId }, query: OBSERVE })
-    return true
-  }
-  if (card._projectId) {
-    router.push({ name: 'Process', params: { projectId: card._projectId }, query: OBSERVE })
-    return true
-  }
-  return false   // ontology 阶段：项目尚未创建，无页面可进
+  // 阶段 -> 页面的映射只有一份（observeFollow），点卡片与自动跟随共用；
+  // 之前这里自己维护了一份缩水的映射，reporting 阶段被落进了环境页（步骤3）。
+  const target = targetRouteForEntry({
+    status: card.status,
+    realSimId: card.simulation_id || null,
+    projectId: card._projectId || null,
+    reportId: card.report_id || card.reportId || null,
+  })
+  if (!target) return false   // ontology 阶段：项目尚未创建，无页面可进
+  router.push(target)
+  return true
 }
 
 const watchingTmpId = ref(null)   // 点了「还没建好项目」的卡片，等 id 出现自动进入
