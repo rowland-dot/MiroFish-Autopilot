@@ -12,7 +12,7 @@ from flask import Blueprint, jsonify, request
 
 from ..config import Config
 from ..utils.pipeline_state import (
-    default_path, mutate_entries, prune_entries, reconcile_with_runs,
+    default_path, expire_stale_active, mutate_entries, prune_entries, reconcile_with_runs,
     remove_entry, run_status_reader, upsert_entry,
 )
 
@@ -31,7 +31,7 @@ def _heal(entries):
     queue never moves.
     """
     reader = run_status_reader(os.path.join(Config.UPLOAD_FOLDER, 'simulations'))
-    return prune_entries(reconcile_with_runs(entries, reader))
+    return prune_entries(reconcile_with_runs(expire_stale_active(entries), reader))
 
 
 @pipeline_bp.route('', methods=['GET'], strict_slashes=False)

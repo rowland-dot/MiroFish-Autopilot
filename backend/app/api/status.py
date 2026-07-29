@@ -30,8 +30,11 @@ def system_status():
     # 流水线条目：ontology/图谱构建/prepare 阶段没有 OASIS 子进程，
     # 不计入的话部署闸门看不到它们，会把准备中的任务直接杀掉。
     try:
-        from ..utils.pipeline_state import default_path, load_entries
-        pipeline_entries = load_entries(default_path())
+        # 走同一套自愈（释放/失效/清理并落盘）——status 是部署闸门的主要消费者，
+        # 只读裸文件会让死浏览器留下的活跃条目把部署挡上一整天
+        from ..utils.pipeline_state import default_path, mutate_entries
+        from .pipeline import _heal
+        pipeline_entries = mutate_entries(default_path(), _heal)
     except Exception:
         pipeline_entries = []
 

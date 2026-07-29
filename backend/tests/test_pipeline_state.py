@@ -182,3 +182,65 @@ def test_reconcile_backwards_compatible_with_plain_string_reader():
     from app.utils.pipeline_state import reconcile_with_runs
     entries = [{"tmpId": "a", "status": "running", "simId": "sim_1"}]
     assert reconcile_with_runs(entries, lambda s: "stopped", now=NOW)[0]["status"] == "done"
+
+
+def test_reader_falls_back_to_file_mtime_when_no_timestamps(tmp_path):
+    # run_state.json without completed_at/updated_at must still get an
+    # ended_at (file mtime) so the grace window applies instead of instant
+    # release racing the driver's reporting handoff
+    import os, json as _json
+    from app.utils.pipeline_state import run_status_reader
+    d = tmp_path / "sim_x"
+    d.mkdir()
+    p = d / "run_state.json"
+    p.write_text(_json.dumps({"runner_status": "completed"}), encoding="utf-8")
+    rec = run_status_reader(str(tmp_path))("sim_x")
+    assert rec["status"] == "completed"
+    assert rec["ended_at"]  # mtime-derived, parseable
+    from datetime import datetime
+    datetime.fromisoformat(rec["ended_at"])
+
+
+def test_cap_never_evicts_active_entries():
+    # MAX_ENTRIES trimmed positionally: 18 undismissed failed cards + new
+    # POSTs could evict a live 'preparing' entry and blind the deploy guard
+    from app.utils.pipeline_state import prune_entries, MAX_ENTRIES
+    entries = [_e("live", "preparing")] \
+        + [_e(f"f{i}", "failed") for i in range(MAX_ENTRIES)] + [_e("new", "queued")]
+    out = prune_entries(entries, NOW)
+    ids = [e["tmpId"] for e in out]
+    assert "live" in ids
+    assert len(out) <= MAX_ENTRIES
+
+
+def test_stale_active_entries_expire_to_failed_not_vanish():
+    # A dead browser leaves ontology..reporting entries stuck active forever
+    # (blocking deploys); after 3h without updates they flip to a visible
+    # 'failed' card instead of silently holding busy or vanishing
+    from app.utils.pipeline_state import expire_stale_active
+    old = (NOW - timedelta(hours=4)).isoformat()
+    fresh = (NOW - timedelta(minutes=10)).isoformat()
+    entries = [
+        {**_e("dead", "preparing"), "updatedAt": old},
+        {**_e("live", "reporting"), "updatedAt": fresh},
+        {**_e("run", "running"), "updatedAt": old},      # running: reconcile owns it
+        {**_e("q", "queued"), "updatedAt": old},          # queued: prune TTL owns it
+    ]
+    out = expire_stale_active(entries, NOW)
+    by = {e["tmpId"]: e for e in out}
+    assert by["dead"]["status"] == "failed" and by["dead"].get("error")
+    assert by["live"]["status"] == "reporting"
+    assert by["run"]["status"] == "running"
+    assert by["q"]["status"] == "queued"
+
+
+def test_reader_treats_unreadable_file_as_indeterminate_not_gone(tmp_path):
+    # run_state.json is written non-atomically every ~2s; a read landing
+    # mid-write must NOT count as "run gone" (zero grace -> entry deleted)
+    from app.utils.pipeline_state import run_status_reader, reconcile_with_runs
+    d = tmp_path / "sim_x"; d.mkdir()
+    (d / "run_state.json").write_text('{"runner_status": "runni', encoding="utf-8")
+    rec = run_status_reader(str(tmp_path))("sim_x")
+    entries = [{"tmpId": "a", "status": "running", "simId": "sim_x"}]
+    out = reconcile_with_runs(entries, lambda s: rec, now=NOW)
+    assert out[0]["status"] == "running"

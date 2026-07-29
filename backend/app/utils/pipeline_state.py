@@ -20,6 +20,8 @@ _DEFAULT_PATH = os.path.join(Config.UPLOAD_FOLDER, "pipeline_state.json")
 _LOCK = threading.Lock()
 
 # 服务器保存的字段（不含文件字节：太大且属于浏览器本地）
+PIPELINE_ACTIVE = ("ontology", "building", "creating", "preparing", "running", "reporting")
+
 SERVER_FIELDS = ("tmpId", "mode", "status", "simId", "projectId", "graphId",
                  "buildTaskId", "reportId", "prompt", "fileName", "createdAt", "updatedAt",
                  "error")
@@ -98,7 +100,38 @@ def prune_entries(entries: list, now: datetime = None, ttl_hours: int = 24) -> l
         if updated < cutoff:
             continue
         out.append(e)
-    return out[-MAX_ENTRIES:] if len(out) > MAX_ENTRIES else out
+    if len(out) <= MAX_ENTRIES:
+        return out
+    # 超容量时绝不能挤掉活跃条目——按位置截断曾把在跑的任务从守卫视野里挤掉
+    active = [e for e in out if e.get("status") in PIPELINE_ACTIVE]
+    rest = [e for e in out if e.get("status") not in PIPELINE_ACTIVE]
+    keep_rest = max(0, MAX_ENTRIES - len(active))
+    kept = set(id(e) for e in active) | set(id(e) for e in rest[-keep_rest:])
+    return [e for e in out if id(e) in kept]
+
+
+# 浏览器死掉后，ontology..reporting 阶段的条目会永远卡在活跃态：
+# 既挡住部署闸门，又占着槽位。3 小时无更新即判定驱动方已消失，翻成
+# 可见的 failed 卡片（不删除——静默消失会弄丢用户的任务与原因）。
+_STALE_ACTIVE_SECONDS = 3 * 3600
+_EXPIRABLE = ("ontology", "building", "creating", "preparing", "reporting")
+
+
+def expire_stale_active(entries: list, now: datetime = None) -> list:
+    now = now or datetime.now()
+    out = []
+    for e in entries:
+        if e.get("status") in _EXPIRABLE:
+            try:
+                age = (now - datetime.fromisoformat(e.get("updatedAt", ""))).total_seconds()
+            except (TypeError, ValueError):
+                age = 0          # 时间戳不可解析：当作新鲜，绝不盲目失效
+            if age > _STALE_ACTIVE_SECONDS:
+                out.append({**e, "status": "failed",
+                            "error": "浏览器会话中断，任务已失效（超过 3 小时无进展）"})
+                continue
+        out.append(e)
+    return out
 
 
 # Run-record values that mean "this simulation is NOT running". `idle` counts:
@@ -160,14 +193,23 @@ def reconcile_with_runs(entries: list, run_status_of, now: datetime = None) -> l
 def run_status_reader(run_state_dir: str):
     """Build a run_status_of(sim_id) that reads run_state.json from disk."""
     def _read(sim_id):
+        path = os.path.join(run_state_dir, sim_id, "run_state.json")
         try:
-            with open(os.path.join(run_state_dir, sim_id, "run_state.json"),
-                      "r", encoding="utf-8") as f:
+            with open(path, "r", encoding="utf-8") as f:
                 d = json.load(f)
-            return {"status": d.get("runner_status"),
-                    "ended_at": d.get("completed_at") or d.get("updated_at")}
-        except (OSError, json.JSONDecodeError):
-            return None
+        except OSError:
+            return None                      # 文件不存在：run 确实没了
+        except json.JSONDecodeError:
+            # 写入方非原子（每 ~2s 覆写一次）；读到半截文件不等于 run 消失，
+            # 零宽限地释放会把在跑的任务条目直接删掉
+            return {"status": "unreadable", "ended_at": None}
+        ended = d.get("completed_at") or d.get("updated_at")
+        if not ended:
+            try:
+                ended = datetime.fromtimestamp(os.path.getmtime(path)).isoformat()
+            except OSError:
+                ended = None
+        return {"status": d.get("runner_status"), "ended_at": ended}
     return _read
 
 
