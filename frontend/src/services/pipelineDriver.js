@@ -42,6 +42,13 @@ export async function runOne(entry, deps, inFlight = new Set()) {
   if (inFlight.has(id)) return
   inFlight.add(id)
   const { api, store, sleep, signal, buildFormData } = deps
+  // Cancelled mid-flight? The user can 取消 an entry AFTER it was promoted and
+  // this runOne started. Without this check the pipeline keeps burning LLM
+  // quota (ontology/build/prepare) for a job that no longer exists.
+  const isGone = () => {
+    try { return store.raw ? !store.raw().entries.some(e => e._tmpId === id) : false }
+    catch { return false }
+  }
   try {
     let projectId = entry.projectId
     let graphId = entry.graphId
@@ -52,6 +59,8 @@ export async function runOne(entry, deps, inFlight = new Set()) {
       projectId = (res.data || res).project_id
       store.patch(id, { projectId }); store.setStatus(id, 'building'); signal()
     }
+
+    if (isGone()) return
 
     if (!graphId) {
       const d = (await withRetry(() => api.buildGraph({ project_id: projectId }), sleep)).data || {}
@@ -70,11 +79,15 @@ export async function runOne(entry, deps, inFlight = new Set()) {
       store.patch(id, { graphId }); store.setStatus(id, 'creating'); signal()
     }
 
+    if (isGone()) return
+
     if (!simId) {
       const res = await withRetry(() => api.createSimulation({ project_id: projectId, graph_id: graphId, enable_twitter: true, enable_reddit: true }), sleep)
       simId = (res.data || res).simulation_id
       store.setSimId(id, simId); store.setStatus(id, 'preparing'); signal()
     }
+
+    if (isGone()) return
 
     // prepare (idempotent server-side: already_prepared short-circuits)
     {
@@ -89,6 +102,8 @@ export async function runOne(entry, deps, inFlight = new Set()) {
       }
       signal()
     }
+
+    if (isGone()) return
 
     // run
     {

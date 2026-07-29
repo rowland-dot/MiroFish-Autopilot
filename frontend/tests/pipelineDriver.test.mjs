@@ -181,3 +181,18 @@ test('exhausted retries keep the root-cause error, not just the last attempt', a
   const err = (patches.find(p => p.error) || {}).error || ''
   assert.ok(/HTTP 429/.test(err), 'root-cause 429 must appear in the stored error: ' + err)
 })
+
+// 取消竞态：排队条目被出队开跑后用户点了取消——驱动器必须在阶段边界发现
+// 条目已被删除并停手，否则被取消的任务会继续烧 ontology/build/prepare 的 LLM 配额
+test('runOne aborts at the next stage boundary after its entry is cancelled', async () => {
+  const calls = []
+  const api = mockApi(calls)
+  const d = deps(api)
+  let cancelled = false
+  api.generateOntology = async () => { calls.push('ontology'); cancelled = true; return { data: { project_id: 'proj_1' } } }
+  d.store.raw = () => ({ entries: cancelled ? [] : [{ _tmpId: 'c1' }] })
+  await runOne({ _tmpId: 'c1', file: {}, prompt: 'p' }, d)
+  assert.ok(calls.includes('ontology'))
+  assert.ok(!calls.includes('build'), 'must stop after cancellation')
+  assert.ok(!calls.includes('create'))
+})
