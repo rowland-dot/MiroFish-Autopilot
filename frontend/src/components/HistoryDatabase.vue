@@ -253,6 +253,7 @@ import { isQueued } from '../utils/queueState'
 import { pipelineStore } from '../store/pipelineQueue'
 import { mergeForDisplay } from '../store/pipelineQueue'
 import { driverTick } from '../services/pipelineDriver'
+import { targetRouteForEntry } from '../utils/observeFollow'
 
 const router = useRouter()
 const route = useRoute()
