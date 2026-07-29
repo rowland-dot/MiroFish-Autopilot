@@ -26,6 +26,16 @@ def has_active_pipeline(pipeline_entries) -> bool:
     )
 
 
+def task_statuses_of(tasks) -> list:
+    """Normalize TaskManager.list_tasks() output (dicts OR objects, enum-ish
+    strings) into plain lowercase status strings for is_busy()."""
+    out = []
+    for t in (tasks or []):
+        raw = t.get("status") if isinstance(t, dict) else getattr(t, "status", "")
+        out.append(str(raw or "").split(".")[-1].lower())
+    return out
+
+
 def is_busy(running_simulations, task_statuses, pipeline_entries=None) -> bool:
     """True 表示系统正忙：有模拟进程存活、有任务 pending/processing，
     或有流水线条目处于在途阶段（部署会杀掉它）。"""

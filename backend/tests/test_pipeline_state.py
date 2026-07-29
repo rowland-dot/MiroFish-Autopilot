@@ -151,3 +151,34 @@ def test_prune_caps_total_entries(tmp_path):
     assert len(out) == MAX_ENTRIES
     # keeps the most recent, drops the oldest
     assert out[-1]["tmpId"] == f"t{MAX_ENTRIES + 9}"
+
+
+def test_reconcile_grace_keeps_recently_stopped_run():
+    # A run that JUST went terminal may be mid-handoff to the driver's
+    # reporting stage — releasing instantly deletes the entry out from under
+    # it (2026-07-29 incident). Terminal + young => keep.
+    from app.utils.pipeline_state import reconcile_with_runs
+    entries = [{"tmpId": "a", "status": "running", "simId": "sim_1"}]
+    rec = {"status": "stopped", "ended_at": (NOW - timedelta(seconds=30)).isoformat()}
+    out = reconcile_with_runs(entries, lambda s: rec, now=NOW)
+    assert out[0]["status"] == "running"
+
+
+def test_reconcile_releases_stopped_run_after_grace():
+    from app.utils.pipeline_state import reconcile_with_runs
+    entries = [{"tmpId": "a", "status": "running", "simId": "sim_1"}]
+    rec = {"status": "stopped", "ended_at": (NOW - timedelta(minutes=10)).isoformat()}
+    out = reconcile_with_runs(entries, lambda s: rec, now=NOW)
+    assert out[0]["status"] == "done"
+
+
+def test_reconcile_still_releases_missing_record_immediately():
+    from app.utils.pipeline_state import reconcile_with_runs
+    entries = [{"tmpId": "a", "status": "running", "simId": "sim_1"}]
+    assert reconcile_with_runs(entries, lambda s: None, now=NOW)[0]["status"] == "done"
+
+
+def test_reconcile_backwards_compatible_with_plain_string_reader():
+    from app.utils.pipeline_state import reconcile_with_runs
+    entries = [{"tmpId": "a", "status": "running", "simId": "sim_1"}]
+    assert reconcile_with_runs(entries, lambda s: "stopped", now=NOW)[0]["status"] == "done"

@@ -107,7 +107,12 @@ def prune_entries(entries: list, now: datetime = None, ttl_hours: int = 24) -> l
 _NOT_RUNNING = ("completed", "stopped", "failed", "idle")
 
 
-def reconcile_with_runs(entries: list, run_status_of) -> list:
+# 终态后的宽限期：run 刚停止时，浏览器驱动器可能正要把条目推进到
+# reporting——立刻释放会把条目从它手里删掉（先释放后推送的竞态）。
+_RELEASE_GRACE_SECONDS = 300
+
+
+def reconcile_with_runs(entries: list, run_status_of, now: datetime = None) -> list:
     """Release entries whose simulation is no longer running. Pure.
 
     The browser driver owns an entry's status, so if that browser dies (tab
@@ -123,11 +128,29 @@ def reconcile_with_runs(entries: list, run_status_of) -> list:
     gone (restart wiped it). A false release self-corrects — the owning
     browser's entry is still dirty and re-POSTs on the next tick.
     """
+    now = now or datetime.now()
     out = []
     for e in entries:
         sim_id = e.get("simId")
-        rs = run_status_of(sim_id) if sim_id else "skip"
-        if sim_id and e.get("status") == "running" and (rs is None or rs in _NOT_RUNNING):
+        rec = run_status_of(sim_id) if sim_id else "skip"
+        # reader may return a plain status string (legacy) or
+        # {"status": ..., "ended_at": ...} (grace-aware)
+        if isinstance(rec, dict):
+            rs, ended_at = rec.get("status"), rec.get("ended_at")
+        else:
+            rs, ended_at = rec, None
+        terminal = rs is None or rs in _NOT_RUNNING
+        if sim_id and e.get("status") == "running" and terminal:
+            # terminal WITH a fresh end timestamp: hold for the grace window so
+            # the driver can carry the entry into its reporting stage
+            if ended_at:
+                try:
+                    age = (now - datetime.fromisoformat(ended_at)).total_seconds()
+                except (TypeError, ValueError):
+                    age = _RELEASE_GRACE_SECONDS
+                if age < _RELEASE_GRACE_SECONDS:
+                    out.append(e)
+                    continue
             out.append({**e, "status": "done"})
         else:
             out.append(e)
@@ -140,7 +163,9 @@ def run_status_reader(run_state_dir: str):
         try:
             with open(os.path.join(run_state_dir, sim_id, "run_state.json"),
                       "r", encoding="utf-8") as f:
-                return json.load(f).get("runner_status")
+                d = json.load(f)
+            return {"status": d.get("runner_status"),
+                    "ended_at": d.get("completed_at") or d.get("updated_at")}
         except (OSError, json.JSONDecodeError):
             return None
     return _read

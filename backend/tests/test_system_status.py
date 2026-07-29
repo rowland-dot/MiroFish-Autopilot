@@ -45,3 +45,22 @@ def test_busy_backwards_compatible_without_pipeline_arg():
     from app.utils.system_status import is_busy
     assert is_busy([], []) is False
     assert is_busy(["sim_1"], []) is True
+
+
+def test_task_statuses_of_reads_dicts_from_task_manager():
+    # TaskManager.list_tasks() returns DICTS (to_dict()); the status endpoint
+    # read them with getattr() so every status came back '' and the deploy
+    # guard was blind to report/build/prepare tasks.
+    from app.utils.system_status import task_statuses_of
+    tasks = [{"status": "processing"}, {"status": "completed"}]
+    assert task_statuses_of(tasks) == ["processing", "completed"]
+    assert is_busy([], task_statuses_of(tasks)) is True
+
+
+def test_task_statuses_of_reads_objects_and_enums():
+    from app.utils.system_status import task_statuses_of
+
+    class T:
+        status = "TaskStatus.PENDING"
+    assert task_statuses_of([T()]) == ["pending"]
+    assert task_statuses_of([]) == []

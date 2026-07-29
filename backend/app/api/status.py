@@ -8,7 +8,7 @@ from flask import Blueprint, jsonify
 
 from ..models.task import TaskManager
 from ..services.simulation_runner import SimulationRunner
-from ..utils.system_status import has_active_pipeline, is_busy
+from ..utils.system_status import has_active_pipeline, is_busy, task_statuses_of
 
 status_bp = Blueprint('status', __name__)
 
@@ -19,8 +19,9 @@ _ACTIVE = {"pending", "processing"}
 def system_status():
     running = SimulationRunner.list_running()
     try:
-        tasks = TaskManager().list_tasks()
-        statuses = [str(getattr(t, 'status', '')).split('.')[-1].lower() for t in tasks]
+        # list_tasks() returns DICTS -- the old getattr() read produced '' for
+        # every task and the deploy guard was blind to report/build/prepare
+        statuses = task_statuses_of(TaskManager().list_tasks())
     except Exception:
         statuses = []
     active_tasks = [s for s in statuses if s in _ACTIVE]
