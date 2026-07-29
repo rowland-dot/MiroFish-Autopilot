@@ -93,7 +93,8 @@
     "modelDeepseekUnavailable": "DeepSeek 密钥未配置——当前使用 MiniMax。在 Space secrets 添加 DEEPSEEK_API_KEY 后可用。",
     "startEngine": "启动引擎",
     "initializing": "初始化中...",
-    "jobCreated": "推演任务已创建，已加入队列"
+    "jobCreated": "推演任务已创建，已加入队列",
+    "autoSingleFileHint": "自动直达模式目前仅使用第一个文件"
   },
   "autoPilot": {
     "pill": "自动驾驶",

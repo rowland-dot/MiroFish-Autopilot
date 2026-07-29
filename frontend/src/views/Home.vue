@@ -560,7 +560,7 @@ const enqueueInstantCard = async (mode) => {
   const file = files.value[0]
   const enc = await fileToB64(file)
   const tmpId = `tmp_${Date.now()}_${_tmpSeq++}`
-  pipelineStore.add({
+  const added = pipelineStore.add({
     _tmpId: tmpId,
     mode,
     prompt: formData.value.simulationRequirement,
@@ -570,7 +570,7 @@ const enqueueInstantCard = async (mode) => {
     status: 'queued',
     projectId: null, buildTaskId: null, graphId: null, realSimId: null,
   })
-  return tmpId
+  return added ? tmpId : null
 }
 
 // 任务入列后清空 01 的文件选择（提示词保留，常需复用）。
@@ -593,22 +593,31 @@ const showToast = (msg) => {
 // 开始模拟（手动）- 立即插卡 + 跳转，逐步由 Step 页面驱动
 const startSimulation = async () => {
   if (!canSubmit.value || loading.value || pipelineStore.capacityFull.value) return
-  disableAutoPilot()
-  await enqueueInstantCard('manual')
-  launch()                                   // 手动仍进入分步流程（launch 已同步捕获文件）
-  clearUploadSelection()
+  loading.value = true                       // 防连点：b64 编码期间可重入
+  try {
+    disableAutoPilot()
+    const id = await enqueueInstantCard('manual')
+    if (!id) { showToast(t('home.queueFullHint')); return }
+    launch()                                 // 手动仍进入分步流程（launch 已同步捕获文件）
+    clearUploadSelection()
+  } finally { loading.value = false }
 }
 
 // 自动直达报告 - 立即插卡，留在首页，由 app 级驱动器无人值守推进
 const startAutoRun = async () => {
   if (!canSubmit.value || loading.value || pipelineStore.capacityFull.value) return
-  // app 级驱动器负责推进整条流水线；不再设置旧的自动驾驶标记——否则用户点进
-  // 步骤页时页面也会自动推进，与驱动器重复触发（双跑 = OOM）。标记关闭后步骤页
-  // 只读展示，可安全点进查看进度。
-  disableAutoPilot()
-  await enqueueInstantCard('auto')           // 不跳转：留在首页可继续排队
-  clearUploadSelection()
-  showToast(t('home.jobCreated'))
+  loading.value = true                       // 防连点：b64 编码期间可重入
+  try {
+    // app 级驱动器负责推进整条流水线；不再设置旧的自动驾驶标记——否则用户点进
+    // 步骤页时页面也会自动推进，与驱动器重复触发（双跑 = OOM）。标记关闭后步骤页
+    // 只读展示，可安全点进查看进度。
+    disableAutoPilot()
+    if (files.value.length > 1) showToast(t('home.autoSingleFileHint'))
+    const id = await enqueueInstantCard('auto')  // 不跳转：留在首页可继续排队
+    if (!id) { showToast(t('home.queueFullHint')); return }
+    clearUploadSelection()
+    showToast(t('home.jobCreated'))
+  } finally { loading.value = false }
 }
 
 const launch = () => {

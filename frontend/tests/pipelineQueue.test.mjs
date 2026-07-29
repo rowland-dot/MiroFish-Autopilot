@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import {
   makeQueue, enqueue, activeEntry, isFull, capacityFull,
   advanceStatus, backfillSimId, cancel, remove, headToPromote,
-  mergeForDisplay, reconcileManual, advanceBySimId, ACTIVE_STATUSES,
+  mergeForDisplay, reconcileManual, advanceBySimId, ACTIVE_STATUSES, mergeServerEntries,
   serialize, deserialize, pruneFinished,
 } from '../src/store/pipelineQueue.js'
 
@@ -169,4 +169,31 @@ test('reconcileManual marks a finished manual entry done', () => {
   q = backfillSimId(q, 'm', 'sim_m')
   assert.equal(reconcileManual(q, []).entries[0].status, 'done')
   assert.equal(reconcileManual(q, ['sim_m']).entries[0].status, 'running')
+})
+
+test('adoptExternalState removes entries tombstoned in another tab', async () => {
+  const { adoptExternalState } = await import('../src/store/pipelineQueue.js')
+  const q = { entries: [{ _tmpId: 'a', status: 'building' }, { _tmpId: 'b', status: 'queued' }], tombstones: [] }
+  const ext = { entries: [], tombstones: [{ tmpId: 'a', _deleted: true, _ackedAt: 1 }] }
+  const out = adoptExternalState(q, ext)
+  assert.deepEqual(out.entries.map(e => e._tmpId), ['b'])
+  assert.equal(out.tombstones.length, 1)
+})
+
+test('adoptExternalState adopts a byte-ful copy over a displayOnly shell', async () => {
+  const { adoptExternalState } = await import('../src/store/pipelineQueue.js')
+  const q = { entries: [{ _tmpId: 'a', status: 'queued', _displayOnly: true }], tombstones: [] }
+  const ext = { entries: [{ _tmpId: 'a', status: 'queued', fileB64: 'AQID', fileName: 'x.docx' }], tombstones: [] }
+  const out = adoptExternalState(q, ext)
+  assert.equal(out.entries.length, 1)
+  assert.equal(out.entries[0].fileB64, 'AQID')
+  assert.ok(!out.entries[0]._displayOnly)
+})
+
+test('acked tombstone re-arms when the server still lists the id (resurrection)', () => {
+  const q = { entries: [], tombstones: [{ tmpId: 'z', _deleted: true, _ackedAt: 123 }] }
+  const out = mergeServerEntries(q, [{ tmpId: 'z', status: 'building' }])
+  assert.equal(out.tombstones.length, 1)
+  assert.equal(out.tombstones[0]._ackedAt, null, 'must re-arm the DELETE retry')
+  assert.equal(out.entries.length, 0, 'tombstone still suppresses the ghost')
 })

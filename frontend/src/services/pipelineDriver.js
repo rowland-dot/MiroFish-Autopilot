@@ -4,6 +4,7 @@
 // imports) so it is unit-testable under node --test. `startDriver` wires the
 // real store + api via dynamic import at call time.
 import { b64ToFile } from '../store/fileCodec.js'
+import { evaluateLease, leaseValue, LOCK_KEY } from './driverLock.js'
 
 const TERMINAL_RUN = ['completed', 'stopped', 'failed']
 const PREPARED = ['completed', 'ready']
@@ -69,6 +70,7 @@ export async function runOne(entry, deps, inFlight = new Set()) {
       } else if (d.task_id) {
         store.patch(id, { buildTaskId: d.task_id })
         for (;;) {
+          if (isGone()) return
           const ts = ((await api.getTaskStatus(d.task_id)).data || {})
           if (ts.status === 'completed') break
           if (ts.status === 'failed') throw new Error('graph build failed: ' + (ts.error || ''))
@@ -94,6 +96,7 @@ export async function runOne(entry, deps, inFlight = new Set()) {
       const d = (await withRetry(() => api.prepareSimulation({ simulation_id: simId, use_llm_for_profiles: true, parallel_profile_count: 5 }), sleep)).data || {}
       if (!d.already_prepared && d.task_id) {
         for (;;) {
+          if (isGone()) return
           const ps = ((await api.getPrepareStatus({ task_id: d.task_id, simulation_id: simId })).data || {})
           if (PREPARED.includes(ps.status)) break
           if (ps.status === 'failed') throw new Error('prepare failed: ' + (ps.error || ''))
@@ -125,6 +128,7 @@ export async function runOne(entry, deps, inFlight = new Set()) {
       let wasLive = false
       let goneStreak = 0
       do {
+        if (isGone()) return
         rs = ((await api.getRunStatus(simId)).data || {}).runner_status
         if (TERMINAL_RUN.includes(rs)) break
         let live = []
@@ -144,6 +148,8 @@ export async function runOne(entry, deps, inFlight = new Set()) {
       } while (true)
       }
     }
+
+    if (isGone()) return
 
     // report (Step 4) — auto-pilot means "auto to report", so the driver
     // kicks report generation after the run. Best-effort: a report failure
@@ -250,6 +256,22 @@ export async function startDriver() {
     store.applyServerMerge(((r.data || r).entries) || [])
   } catch { /* offline */ }
 
+  // 跨标签页收养：另一标签页的取消/新提交（含文件字节）通过 storage 事件同步，
+  // 取消立即让本页驱动器停手（isGone），新任务的字节让领导标签页能接手驱动
+  let ls = null
+  try { ls = window.localStorage } catch { /* SSR/隐私模式 */ }
+  if (typeof window !== 'undefined' && ls) {
+    const { deserialize } = await import('../store/pipelineQueue.js')
+    window.addEventListener('storage', (ev) => {
+      if (ev.key !== 'mirofish_pipeline_queue' || !ev.newValue) return
+      try { store.adoptExternal(deserialize(ev.newValue)) } catch { /* ignore */ }
+    })
+  }
+  // 每个打开的标签页都跑驱动器；没有唯一领导者时，两个标签页会把同一个任务
+  // 各推进一遍（双份 ontology/图谱/模拟 = 双倍 LLM 消耗）。租约在 localStorage，
+  // 只有持有者推进流水线；其余标签页只同步显示。
+  const TAB_ID = Math.random().toString(36).slice(2)
+
   // Re-entrancy guard: the tick now awaits several calls; without this a slow
   // tick would overlap itself (duplicate writes, stale merges landing late).
   let tickBusy = false
@@ -258,6 +280,15 @@ export async function startDriver() {
     tickBusy = true
     try {
       await syncTick({ store, pipeApi, api, toServerEntry })
+
+      // leadership gate: only the lease holder advances (claim now, lead on
+      // the NEXT tick so two simultaneous claimants can't both drive)
+      if (ls) {
+        const lease = evaluateLease(ls.getItem(LOCK_KEY), TAB_ID, Date.now())
+        if (lease.shouldClaim) { ls.setItem(LOCK_KEY, leaseValue(TAB_ID, Date.now())); return }
+        if (!lease.isLeader) return
+        ls.setItem(LOCK_KEY, leaseValue(TAB_ID, Date.now()))   // heartbeat
+      }
 
       // advance (NOT awaited — runOne runs for minutes; awaiting it would
       // hold tickBusy and starve the sync above). Display-only entries have

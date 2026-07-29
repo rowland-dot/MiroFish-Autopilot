@@ -11,8 +11,9 @@ export function targetRouteForEntry(entry) {
   if (entry.reportId) {
     return { name: 'Report', params: { reportId: entry.reportId } }   // report has its own view
   }
-  // reporting（报告生成中、还没有 reportId）：留在运行页，绝不能退回环境页
-  if ((entry.status === 'running' || entry.status === 'reporting') && entry.realSimId) {
+  // reporting（报告生成中、还没有 reportId）：留在运行页，绝不能退回环境页。
+  // failed 同理——运行/报告阶段失败的卡片应落在运行页看到现场，而不是环境页
+  if ((entry.status === 'running' || entry.status === 'reporting' || entry.status === 'failed') && entry.realSimId) {
     return { name: 'SimulationRun', params: { simulationId: entry.realSimId }, query: q }
   }
   if (entry.realSimId) {

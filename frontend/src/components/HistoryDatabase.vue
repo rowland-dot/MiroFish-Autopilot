@@ -23,7 +23,7 @@
         v-for="(project, index) in displayProjects"
         :key="project.simulation_id || project._tmpId"
         class="project-card"
-        :class="{ expanded: isExpanded, hovering: hoveringCard === index, queued: isCardQueued(project), running: isCardRunning(project), generating: isCardGenerating(project), failed: isCardFailed(project) }"
+        :class="[{ expanded: isExpanded, hovering: hoveringCard === index }, cardStageClass(project)]"
         :style="getCardStyle(index)"
         @mouseenter="hoveringCard = index"
         @mouseleave="hoveringCard = null"
@@ -45,8 +45,9 @@
               :class="{ available: project.project_id, unavailable: !project.project_id }"
               :title="$t('history.graphBuild')"
             >◇</span>
-            <span 
-              class="status-icon available" 
+            <span
+              class="status-icon"
+              :class="{ available: project.simulation_id, unavailable: !project.simulation_id }"
               :title="$t('history.envSetup')"
             >◈</span>
             <span 
@@ -296,6 +297,15 @@ const isCardRunning = (project) =>
         || (isQueued(project.simulation_id, runningIds.value) && !isRecordComplete(project)))
 const isCardGenerating = (project) => GEN_STATUSES.includes(pipelineStage(project))
 const isCardFailed = (project) => pipelineStage(project) === 'failed'
+// 卡片边框样式与徽标同一优先级、互斥——两个独立轮询的列表在过渡瞬间可能
+// 同时为真（queued+running），独立绑定会出现「红框配运行中徽标」的自相矛盾
+const cardStageClass = (project) => {
+  if (isCardFailed(project)) return 'failed'
+  if (isCardRunning(project)) return 'running'
+  if (isCardGenerating(project)) return 'generating'
+  if (isCardQueued(project)) return 'queued'
+  return ''
+}
 
 const refreshQueueState = async () => {
   try {
@@ -585,6 +595,13 @@ const enterLiveView = (card) => {
 const watchingTmpId = ref(null)   // 点了「还没建好项目」的卡片，等 id 出现自动进入
 
 const navigateToProject = (simulation) => {
+  // 别的会话正在跑的记录（本浏览器没有流水线条目）也必须走观察模式——
+  // 走普通详情弹窗的话，其「进入环境搭建」会不带 observe 打开步骤页，
+  // 步骤页挂载时的 checkAndStopRunningSimulation 会把别人跑着的模拟强停
+  if (!simulation._optimistic && !simulation._pipelineStatus && isCardRunning(simulation)) {
+    enterLiveView({ ...simulation, status: 'running' })
+    return
+  }
   // 乐观卡片，或仍在流水线中的真实记录 -> 进入实时页面
   if (simulation._optimistic || simulation._pipelineStatus) {
     if (!enterLiveView({ ...simulation, status: pipelineStage(simulation) })) {
@@ -632,9 +649,12 @@ const goToProject = () => {
 // 导航到环境配置页面（Simulation）
 const goToSimulation = () => {
   if (selectedProject.value?.simulation_id) {
+    // 该模拟若在实时进程列表里，必须带 observe 进入——否则步骤页会强停它
+    const live = isQueued(selectedProject.value.simulation_id, runningIds.value)
     router.push({
       name: 'Simulation',
-      params: { simulationId: selectedProject.value.simulation_id }
+      params: { simulationId: selectedProject.value.simulation_id },
+      ...(live ? { query: { observe: '1' } } : {}),
     })
     closeModal()
   }

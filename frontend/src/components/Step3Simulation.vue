@@ -694,6 +694,9 @@ const formatActionTime = (timestamp) => {
 }
 
 const handleNextStep = async () => {
+  // 观察模式只看不动：这里若不拦，观察者点「生成报告」会 force_regenerate，
+  // 与驱动器自己的报告阶段竞态并重复烧 LLM
+  if (route.query.observe === '1') return
   if (!props.simulationId) {
     addLog(t('log.errorMissingSimId'))
     return

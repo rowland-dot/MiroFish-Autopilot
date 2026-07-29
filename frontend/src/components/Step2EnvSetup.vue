@@ -771,9 +771,9 @@ const handleStartSimulation = () => {
 // 自动驾驶：环境搭建完成后自动开始模拟（使用自动生成的轮数配置）
 // （spec: docs/specs/2026-07-16-auto-pilot-pipeline-spec.md）
 watch(phase, (v) => {
-  if (v === 4 && isAutoPilot()) {
+  if (v === 4 && isAutoPilot() && route.query.observe !== '1') {
     setTimeout(() => {
-      if (isAutoPilot() && phase.value === 4) handleStartSimulation()
+      if (isAutoPilot() && phase.value === 4 && route.query.observe !== '1') handleStartSimulation()
     }, 1500)
   }
 })

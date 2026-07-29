@@ -54,3 +54,8 @@ test('shouldFollow only when the target differs from the current route', () => {
   assert.equal(shouldFollow(t, 'SimulationRun', { simulationId: 'other' }), true)
   assert.equal(shouldFollow(null, 'Process', {}), false)
 })
+
+test('failed entry with a sim lands on the run page (error context), not env page', () => {
+  const t = targetRouteForEntry({ status: 'failed', realSimId: 'sim_1' })
+  assert.equal(t.name, 'SimulationRun')
+})

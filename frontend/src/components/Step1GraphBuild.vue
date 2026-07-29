@@ -190,13 +190,17 @@
 
 <script setup>
 import { computed, ref, watch, nextTick } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { createSimulation } from '../api/simulation'
 import { isAutoPilot } from '../utils/autoPilot'
 import { pipelineStore } from '../store/pipelineQueue'
 
 const router = useRouter()
+const route = useRoute()
+// 观察模式：本组件多处引用 isObserving 但从未声明——脚本里第一次触达就抛
+// ReferenceError，把「进入环境搭建」按钮对所有用户打断（不仅是观察者）
+const isObserving = computed(() => route.query.observe === '1')
 const { t } = useI18n()
 
 const props = defineProps({

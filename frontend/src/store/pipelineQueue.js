@@ -208,9 +208,40 @@ export function mergeServerEntries(q, serverEntries) {
     out.push({ ...fromServerEntry(s), _displayOnly: true })
   }
 
-  // tombstone clears only after a DELETE ack AND a later response lacking the id
-  const kept = tombs.filter(t => !(t._ackedAt && !byId.has(t.tmpId)))
+  // tombstone clears only after a DELETE ack AND a later response lacking the
+  // id。若服务器仍列出这个 id（别的标签页复活了它），重新武装 DELETE 重试，
+  // 否则「取消」永远不生效
+  const kept = tombs
+    .filter(t => !(t._ackedAt && !byId.has(t.tmpId)))
+    .map(t => (t._ackedAt && byId.has(t.tmpId)) ? { ...t, _ackedAt: null } : t)
   return { ...q, entries: out, tombstones: kept }
+}
+
+// 同浏览器跨标签页收养：storage 事件带来另一标签页写入的 localStorage 状态。
+// 收养它的墓碑（那边取消的任务这边立刻停手），并把带文件字节的完整条目
+// 替换掉本地徒有其表的 _displayOnly 壳（领导标签页因此拿得到别标签页提交
+// 任务的字节，能接手驱动）。
+export function adoptExternalState(q, ext) {
+  const extTombs = Array.isArray(ext && ext.tombstones) ? ext.tombstones : []
+  const extEntries = Array.isArray(ext && ext.entries) ? ext.entries : []
+  const extTombIds = new Set(extTombs.map(t => t.tmpId))
+  const ownTombs = new Map((q.tombstones || []).map(t => [t.tmpId, t]))
+  const extById = new Map(extEntries.map(e => [e._tmpId, e]))
+
+  const entries = []
+  for (const e of q.entries) {
+    if (extTombIds.has(e._tmpId)) continue
+    const other = extById.get(e._tmpId)
+    if (e._displayOnly && other && other.fileB64) { entries.push(other); continue }
+    entries.push(e)
+  }
+  const localIds = new Set(entries.map(e => e._tmpId))
+  for (const e of extEntries) {
+    if (localIds.has(e._tmpId) || ownTombs.has(e._tmpId) || extTombIds.has(e._tmpId)) continue
+    entries.push(e)
+  }
+  for (const t of extTombs) if (!ownTombs.has(t.tmpId)) ownTombs.set(t.tmpId, t)
+  return { ...q, entries, tombstones: [...ownTombs.values()] }
 }
 
 // ---- reactive singleton ----
@@ -276,7 +307,12 @@ export const pipelineStore = {
   capacityFull: computed(() => capacityFull(_state.q)),
 
   // A brand-new entry is revision 0 and already unacked — no extra bump.
-  add: (entry) => mutate(q => enqueue(q, { ...entry, _rev: 0, _dirty: true, _seenOnServer: false })),
+  // 返回是否真的入列了——容量满时 enqueue 静默丢弃，调用方不能对着一个
+  // 从没入列的任务喊「任务已创建」
+  add: (entry) => {
+    mutate(q => enqueue(q, { ...entry, _rev: 0, _dirty: true, _seenOnServer: false }))
+    return _state.q.entries.some(e => e._tmpId === entry._tmpId)
+  },
   setStatus: (id, s) => mutate(q => advanceStatus(q, id, s), id),
   setSimId: (id, sid) => mutate(q => backfillSimId(q, id, sid), id),
   setStatusBySimId: (sid, s) => mutate(q => advanceBySimId(q, sid, s), simIdToTmp(_state.q, sid)),
@@ -292,6 +328,7 @@ export const pipelineStore = {
 
   // Removal always leaves a tombstone: it suppresses a stale server copy and
   // the driver retries the DELETE until the server converges.
+  adoptExternal: (ext) => mutate(q => adoptExternalState(q, ext)),
   cancel: (id) => mutate(q => addTombstones(cancel(q, id), [id])),
   remove: (id) => mutate(q => addTombstones(remove(q, id), [id])),
   prune: () => mutate(q => {
