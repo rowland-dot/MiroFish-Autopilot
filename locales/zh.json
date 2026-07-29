@@ -94,7 +94,9 @@
     "startEngine": "启动引擎",
     "initializing": "初始化中...",
     "jobCreated": "推演任务已创建，已加入队列",
-    "autoSingleFileHint": "自动直达模式目前仅使用第一个文件"
+    "autoSingleFileHint": "自动直达模式目前仅使用第一个文件",
+    "collapseBanner": "收起",
+    "expandBanner": "展开介绍"
   },
   "autoPilot": {
     "pill": "自动驾驶",

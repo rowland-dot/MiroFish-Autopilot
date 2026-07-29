@@ -12,8 +12,19 @@
     </nav>
 
     <div class="main-content">
+      <!-- 折叠后的细条：只留品牌标签与展开按钮，工作区直接顶到首屏 -->
+      <section v-if="bannerCollapsed" class="hero-collapsed">
+        <span class="orange-tag">{{ $t('home.tagline') }}</span>
+        <button class="banner-toggle" @click="toggleBanner" :title="$t('home.expandBanner')">
+          {{ $t('home.expandBanner') }} <span class="chev">⌄</span>
+        </button>
+      </section>
+
       <!-- 上半部分：Hero 区域 -->
-      <section class="hero-section">
+      <section v-else class="hero-section">
+        <button class="banner-toggle banner-toggle-float" @click="toggleBanner" :title="$t('home.collapseBanner')">
+          {{ $t('home.collapseBanner') }} <span class="chev up">⌃</span>
+        </button>
         <div class="hero-left">
           <div class="tag-row">
             <span class="orange-tag">{{ $t('home.tagline') }}</span>
@@ -326,8 +337,18 @@ import { enableAutoPilot, disableAutoPilot } from '../utils/autoPilot'
 import { getSettings, updateSettings } from '../api/settings'
 import { pipelineStore } from '../store/pipelineQueue'
 import { fileToB64 } from '../store/fileCodec'
+import { readCollapsed, writeCollapsed } from '../utils/bannerPref'
 
 const router = useRouter()
+
+// 横幅折叠：读初始值时就定好（不在 onMounted 里改），避免先展开再收起的闪烁
+const bannerCollapsed = ref(
+  typeof localStorage !== 'undefined' ? readCollapsed(localStorage) : false
+)
+const toggleBanner = () => {
+  bannerCollapsed.value = !bannerCollapsed.value
+  if (typeof localStorage !== 'undefined') writeCollapsed(localStorage, bannerCollapsed.value)
+}
 // 脚本里用 t()（模板的 $t 不需要）——漏了这行会让 showToast(t(...)) 直接
 // ReferenceError，提示条永远弹不出来
 const { t } = useI18n()
@@ -719,6 +740,47 @@ const launch = () => {
   justify-content: space-between;
   margin-bottom: 80px;
   position: relative;
+}
+
+/* 折叠横幅：细条 + 收起/展开按钮 */
+.hero-collapsed {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 0 14px;
+  margin-bottom: 32px;
+  border-bottom: 1px solid #E5E7EB;
+}
+
+.banner-toggle {
+  background: none;
+  border: 1px solid #D1D5DB;
+  border-radius: 2px;
+  color: #6B7280;
+  font-family: inherit;
+  font-size: 11px;
+  letter-spacing: 0.5px;
+  padding: 5px 10px;
+  cursor: pointer;
+  transition: color 0.15s ease-out, border-color 0.15s ease-out;
+}
+
+.banner-toggle:hover {
+  color: #111827;
+  border-color: #9CA3AF;
+}
+
+.banner-toggle-float {
+  position: absolute;
+  top: 0;
+  right: 0;
+  z-index: 5;
+}
+
+.banner-toggle .chev {
+  display: inline-block;
+  margin-left: 2px;
 }
 
 .hero-left {

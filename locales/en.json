@@ -94,7 +94,9 @@
     "startEngine": "Start Engine",
     "initializing": "Initializing...",
     "jobCreated": "Job created — added to the queue",
-    "autoSingleFileHint": "Auto mode currently uses only the first file"
+    "autoSingleFileHint": "Auto mode currently uses only the first file",
+    "collapseBanner": "Collapse",
+    "expandBanner": "Show intro"
   },
   "autoPilot": {
     "pill": "AUTO-PILOT",
