@@ -11,6 +11,7 @@ Called once at app start. Isolated module — does NOT touch simulation_runner.p
 
 import json
 import os
+from datetime import datetime
 
 from .logger import logger
 
@@ -99,3 +100,76 @@ def reconcile_on_start(run_state_dir: str) -> None:
             logger.info(f"启动清理：已终结 {len(changed)} 条重启遗留的运行记录: {changed}")
     except Exception as e:      # never block startup
         logger.error(f"运行记录清理失败: {e}")
+
+
+# ---- live-wedge watchdog -------------------------------------------------
+# 与上面的「重启后清尸」不同：这里对付的是进程还活着、但收尾卡死的 run——
+# 两个平台的轮次都跑满了，runner 却停在 'running' 不出来，一挂就是几小时，
+# 占着并发槽位把整个队列冻住（两天内发生了两次）。
+#
+# 判定（宁可保守）：
+#   - 轮次已跑满 + 心跳（updated_at）停更超过 10 分钟   -> 收尾卡死
+#   - 轮次未跑满 + 心跳停更超过 2 小时                  -> 中途卡死
+# 心跳每 ~2s 覆写一次，10 分钟静默对「已完成」的 run 来说绰绰有余；
+# 中途的 run 单轮 LLM 可能很慢，阈值放到 2 小时避免误杀。
+
+_WEDGE_DONE_SECONDS = 10 * 60
+_WEDGE_MIDRUN_SECONDS = 2 * 3600
+_WATCHDOG_INTERVAL_SECONDS = 60
+_WATCHDOG_LAST = None
+
+
+def find_wedged_runs(run_state_dir: str, now: datetime = None) -> list:
+    """Ids of live-but-wedged runs. Pure read; never raises."""
+    now = now or datetime.now()
+    out = []
+    if not os.path.isdir(run_state_dir):
+        return out
+    for sim_id in sorted(os.listdir(run_state_dir)):
+        path = os.path.join(run_state_dir, sim_id, "run_state.json")
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                st = json.load(f)
+        except (OSError, json.JSONDecodeError):
+            continue
+        if st.get("runner_status") != "running":
+            continue
+        heartbeat = st.get("updated_at") or st.get("started_at")
+        try:
+            age = (now - datetime.fromisoformat(heartbeat)).total_seconds()
+        except (TypeError, ValueError):
+            continue                     # 无法判定心跳：不动它
+        total = st.get("total_rounds") or 0
+        done = total > 0 and (st.get("current_round") or 0) >= total
+        limit = _WEDGE_DONE_SECONDS if done else _WEDGE_MIDRUN_SECONDS
+        if age > limit:
+            out.append(sim_id)
+    return out
+
+
+def _default_stopper(sim_id: str) -> None:
+    from ..services.simulation_runner import SimulationRunner
+    SimulationRunner.stop_simulation(sim_id)
+
+
+def watchdog_tick(run_state_dir: str, stopper=None, now: datetime = None) -> list:
+    """Stop every wedged run. Throttled (>=60s between scans); never raises.
+
+    Called from hot read paths (/api/status, /api/pipeline) so no scheduler
+    is needed — any open browser or the deploy script keeps it beating.
+    """
+    global _WATCHDOG_LAST
+    now = now or datetime.now()
+    if _WATCHDOG_LAST is not None and (now - _WATCHDOG_LAST).total_seconds() < _WATCHDOG_INTERVAL_SECONDS:
+        return []
+    _WATCHDOG_LAST = now
+    stopper = stopper or _default_stopper
+    stopped = []
+    for sim_id in find_wedged_runs(run_state_dir, now=now):
+        try:
+            stopper(sim_id)
+            stopped.append(sim_id)
+            logger.warning(f"看门狗：run {sim_id} 收尾卡死（轮次已完成但状态停在 running），已强制停止")
+        except Exception as e:          # noqa: BLE001 — 看门狗绝不能拖垮读接口
+            logger.error(f"看门狗停止 {sim_id} 失败: {e}")
+    return stopped

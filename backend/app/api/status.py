@@ -17,6 +17,14 @@ _ACTIVE = {"pending", "processing"}
 
 @status_bp.route('/status', methods=['GET'])
 def system_status():
+    # 看门狗（60s 节流）：部署脚本轮询 status，容器即使没人开网页也能自愈
+    try:
+        from ..config import Config
+        import os as _os
+        from ..utils.run_state_reconcile import watchdog_tick
+        watchdog_tick(_os.path.join(Config.UPLOAD_FOLDER, 'simulations'))
+    except Exception:
+        pass
     running = SimulationRunner.list_running()
     try:
         # list_tasks() returns DICTS -- the old getattr() read produced '' for

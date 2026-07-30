@@ -37,6 +37,10 @@ def _heal(entries):
 @pipeline_bp.route('', methods=['GET'], strict_slashes=False)
 def get_pipeline():
     """读取条目（顺带清理并落盘，避免只读时文件无限增长）。"""
+    # 看门狗：收尾卡死的 run（轮次跑满却停在 running）会占槽冻结整个队列，
+    # 任何打开的浏览器每次轮询都顺带巡查一遍（内部 60s 节流）
+    from ..utils.run_state_reconcile import watchdog_tick
+    watchdog_tick(os.path.join(Config.UPLOAD_FOLDER, 'simulations'))
     return _ok(mutate_entries(default_path(), _heal))
 
 

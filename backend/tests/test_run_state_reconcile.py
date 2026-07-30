@@ -110,3 +110,69 @@ def test_manager_state_synced_even_when_run_state_already_terminal(tmp_path):
 
     with open(os.path.join(d, "state.json"), "r", encoding="utf-8") as f:
         assert json.load(f)["status"] == "completed"
+
+
+def _write_state(tmp_path, sim_id, state):
+    import json, os
+    d = tmp_path / sim_id
+    d.mkdir(exist_ok=True)
+    (d / "run_state.json").write_text(json.dumps(state), encoding="utf-8")
+    return d
+
+
+def test_watchdog_stops_a_wedged_completed_run(tmp_path):
+    # Second occurrence in two days: all rounds complete on both platforms but
+    # the runner never finalizes -- stays 'running' for hours, holds the queue
+    # slot, blocks every queued job. The watchdog must stop it.
+    from datetime import datetime, timedelta
+    from app.utils.run_state_reconcile import find_wedged_runs
+    now = datetime(2026, 7, 30, 12, 0, 0)
+    stale = (now - timedelta(minutes=30)).isoformat()
+    _write_state(tmp_path, "sim_wedged", {
+        "runner_status": "running", "current_round": 72, "total_rounds": 72,
+        "updated_at": stale,
+    })
+    _write_state(tmp_path, "sim_live", {
+        "runner_status": "running", "current_round": 30, "total_rounds": 72,
+        "updated_at": stale,
+    })
+    _write_state(tmp_path, "sim_fresh_done", {
+        "runner_status": "running", "current_round": 72, "total_rounds": 72,
+        "updated_at": (now - timedelta(minutes=2)).isoformat(),
+    })
+    _write_state(tmp_path, "sim_done", {
+        "runner_status": "completed", "current_round": 72, "total_rounds": 72,
+        "updated_at": stale,
+    })
+    assert find_wedged_runs(str(tmp_path), now=now) == ["sim_wedged"]
+
+
+def test_watchdog_flags_stalled_mid_run_only_after_long_silence(tmp_path):
+    # A mid-run heartbeat can pause legitimately for a while (slow LLM round);
+    # only a very long silence counts as wedged
+    from datetime import datetime, timedelta
+    from app.utils.run_state_reconcile import find_wedged_runs
+    now = datetime(2026, 7, 30, 12, 0, 0)
+    _write_state(tmp_path, "sim_stalled", {
+        "runner_status": "running", "current_round": 30, "total_rounds": 72,
+        "updated_at": (now - timedelta(hours=3)).isoformat(),
+    })
+    assert find_wedged_runs(str(tmp_path), now=now) == ["sim_stalled"]
+
+
+def test_watchdog_tick_is_throttled_and_calls_stopper(tmp_path):
+    from datetime import datetime, timedelta
+    from app.utils import run_state_reconcile as rsr
+    now = datetime(2026, 7, 30, 12, 0, 0)
+    stale = (now - timedelta(minutes=30)).isoformat()
+    _write_state(tmp_path, "sim_wedged", {
+        "runner_status": "running", "current_round": 72, "total_rounds": 72,
+        "updated_at": stale,
+    })
+    stopped = []
+    rsr._WATCHDOG_LAST = None    # reset module throttle for the test
+    rsr.watchdog_tick(str(tmp_path), stopper=stopped.append, now=now)
+    assert stopped == ["sim_wedged"]
+    # immediate second tick: throttled, no re-stop even if state unchanged
+    rsr.watchdog_tick(str(tmp_path), stopper=stopped.append, now=now)
+    assert stopped == ["sim_wedged"]
