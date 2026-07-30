@@ -236,3 +236,26 @@ test('no matching project -> normal full pipeline; listProjects failure is non-f
   assert.ok(calls.includes('ontology'))
   assert.ok(calls.includes('build'))
 })
+
+// 建图接口对新建图谱同时返回 graph_id + task_id（Zep 异步处理 episode）。
+// 只见 graph_id 就抢跑会拿着空图谱去 prepare -> 「没有找到符合条件的实体」
+test('fresh build with BOTH graph_id and task_id waits for the task (no empty-graph race)', async () => {
+  const calls = []
+  const api = mockApi(calls)
+  api.buildGraph = async () => (calls.push('build'), { data: { graph_id: 'g_new', task_id: 'bt9' } })
+  let polls = 0
+  api.getTaskStatus = async () => ({ data: { status: ++polls < 2 ? 'processing' : 'completed' } })
+  const d = deps(api)
+  await runOne({ _tmpId: 'z1', file: {}, prompt: 'p' }, d)
+  assert.ok(polls >= 2, 'must poll the build task to completion before creating the sim')
+  assert.equal(d._rec.statuses.at(-1), 'done')
+})
+
+test('reused graph still short-circuits without polling', async () => {
+  const calls = []
+  const api = mockApi(calls)   // buildGraph mock: { reused: true, graph_id: 'g1' }
+  let polls = 0
+  api.getTaskStatus = async () => { polls++; return { data: { status: 'completed' } } }
+  await runOne({ _tmpId: 'z2', file: {}, prompt: 'p' }, deps(api))
+  assert.equal(polls, 0, 'reused graph needs no task wait')
+})

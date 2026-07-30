@@ -84,7 +84,10 @@ export async function runOne(entry, deps, inFlight = new Set()) {
 
     if (!graphId) {
       const d = (await withRetry(() => api.buildGraph({ project_id: projectId }), sleep)).data || {}
-      if (d.graph_id) {
+      // 新建图谱会同时返回 graph_id + task_id（Zep 异步处理 episode）。见到
+      // graph_id 就抢跑，会拿着 0 实体的空图谱去 prepare（「没有找到符合条件
+      // 的实体」）。只有明确 reused（图谱早已建成）才允许跳过等待。
+      if (d.reused && d.graph_id) {
         graphId = d.graph_id
       } else if (d.task_id) {
         store.patch(id, { buildTaskId: d.task_id })
@@ -96,6 +99,8 @@ export async function runOne(entry, deps, inFlight = new Set()) {
           await sleep(2000)
         }
         graphId = ((await api.getProject(projectId)).data || {}).graph_id
+      } else if (d.graph_id) {
+        graphId = d.graph_id     // 无任务可等（后端兜底形态）
       }
       store.patch(id, { graphId }); store.setStatus(id, 'creating'); signal()
     }
