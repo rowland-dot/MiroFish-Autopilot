@@ -634,8 +634,21 @@ class SimulationConfigGenerator:
             agents_per_hour_min = max(1, agents_per_hour_max // 2)
             logger.warning(f"agents_per_hour_min >= max，已修正为 {agents_per_hour_min}")
         
+        # 成本闸门：模拟轮次占整单 LLM 消耗的 ~80-92%，LLM 可自选 24-168 小时
+        # 且此前不设上限（实际出现过 96、120），单次任务成本不可控。
+        # 上限默认 72（3 天），可用环境变量 MAX_SIM_HOURS 调整；下限 24。
+        import os as _os
+        try:
+            _cap = int(_os.environ.get("MAX_SIM_HOURS", "72"))
+        except ValueError:
+            _cap = 72
+        _hours = result.get("total_simulation_hours") or 72
+        _clamped = max(24, min(int(_hours), _cap))
+        if _clamped != _hours:
+            logger.warning(f"模拟时长 {_hours}h 超出允许范围，已钳制为 {_clamped}h（上限 MAX_SIM_HOURS={_cap}）")
+
         return TimeSimulationConfig(
-            total_simulation_hours=result.get("total_simulation_hours", 72),
+            total_simulation_hours=_clamped,
             minutes_per_round=result.get("minutes_per_round", 60),  # 默认每轮1小时
             agents_per_hour_min=agents_per_hour_min,
             agents_per_hour_max=agents_per_hour_max,

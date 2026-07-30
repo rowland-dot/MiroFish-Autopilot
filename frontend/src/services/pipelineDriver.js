@@ -56,6 +56,25 @@ export async function runOne(entry, deps, inFlight = new Set()) {
     let simId = entry.realSimId
 
     if (!projectId) {
+      // 复用：同一份文件 + 同一段提示词重复提交时，直接挂到已有的完整图谱上，
+      // 跳过 ontology 与建图（重复测试同一文档时最省 Zep 配额与时间的一步）
+      try {
+        const list = ((await api.listProjects()).data) || []
+        const hit = list
+          .filter(p => p.status === 'graph_completed' && p.graph_id
+            && p.simulation_requirement === entry.prompt
+            && (p.files || []).some(f => (f.filename || f) === entry.fileName))
+          .sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)))
+          .pop()
+        if (hit) {
+          projectId = hit.project_id
+          graphId = hit.graph_id
+          store.patch(id, { projectId, graphId }); store.setStatus(id, 'creating'); signal()
+        }
+      } catch { /* 查询失败就走完整流程 */ }
+    }
+
+    if (!projectId) {
       const res = await withRetry(() => api.generateOntology(buildFormData(entry)), sleep)
       projectId = (res.data || res).project_id
       store.patch(id, { projectId }); store.setStatus(id, 'building'); signal()

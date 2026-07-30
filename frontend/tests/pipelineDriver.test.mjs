@@ -196,3 +196,43 @@ test('runOne aborts at the next stage boundary after its entry is cancelled', as
   assert.ok(!calls.includes('build'), 'must stop after cancellation')
   assert.ok(!calls.includes('create'))
 })
+
+test('plan-quota 429 (Token Plan limit) is NOT retried — fail fast with the real error', async () => {
+  const calls = []
+  const api = mockApi(calls)
+  api.generateOntology = async () => {
+    calls.push('ontology')
+    throw new Error("已达到 Token Plan 速率限制，请升级 Token Plan 套餐或切换为按量付费 API 使用。 (2062)")
+  }
+  const d = deps(api)
+  await runOne({ _tmpId: 'q1', file: {}, prompt: 'p' }, d)
+  assert.equal(calls.filter(c => c === 'ontology').length, 1, 'quota exhaustion does not heal in seconds — no retry hammering')
+  assert.equal(d._rec.statuses.at(-1), 'failed')
+})
+
+// 复用图谱：同文件+同提示词重复提交时跳过 ontology+建图（省 Zep 与时间）
+test('identical resubmit reuses the existing completed graph (no ontology/build)', async () => {
+  const calls = []
+  const api = mockApi(calls)
+  api.listProjects = async () => ({ data: [
+    { project_id: 'proj_old', status: 'graph_completed', graph_id: 'g_old',
+      simulation_requirement: 'p', files: [{ filename: 'x.docx' }], created_at: '2026-07-30T01:00:00' },
+    { project_id: 'proj_other', status: 'graph_completed', graph_id: 'g_other',
+      simulation_requirement: 'DIFFERENT', files: [{ filename: 'x.docx' }], created_at: '2026-07-31T01:00:00' },
+  ] })
+  const d = deps(api)
+  await runOne({ _tmpId: 'g1', file: {}, prompt: 'p', fileName: 'x.docx' }, d)
+  assert.ok(!calls.includes('ontology'), 'must reuse, not regenerate ontology')
+  assert.ok(!calls.includes('build'))
+  assert.ok(calls.includes('create'))
+  assert.equal(d._rec.statuses.at(-1), 'done')
+})
+
+test('no matching project -> normal full pipeline; listProjects failure is non-fatal', async () => {
+  const calls = []
+  const api = mockApi(calls)
+  api.listProjects = async () => { throw new Error('offline') }
+  await runOne({ _tmpId: 'g2', file: {}, prompt: 'p', fileName: 'x.docx' }, deps(api))
+  assert.ok(calls.includes('ontology'))
+  assert.ok(calls.includes('build'))
+})

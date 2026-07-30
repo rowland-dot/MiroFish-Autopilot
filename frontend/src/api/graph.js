@@ -64,3 +64,8 @@ export function getProject(projectId) {
     method: 'get'
   })
 }
+
+// 项目列表（驱动器用于「同文件+同提示词复用图谱」）
+export function listProjects() {
+  return service.get('/api/graph/project/list')
+}
