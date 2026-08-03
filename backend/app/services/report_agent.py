@@ -924,7 +924,7 @@ class ReportAgent:
     
     def _define_tools(self) -> Dict[str, Dict[str, Any]]:
         """定义可用工具"""
-        return {
+        tools = {
             "insight_forge": {
                 "name": "insight_forge",
                 "description": TOOL_DESC_INSIGHT_FORGE,
@@ -958,6 +958,12 @@ class ReportAgent:
                 }
             }
         }
+        # 报告采访开关（设置页「报告采访」）：关闭时不注册该工具，
+        # ReACT 根本看不见它——比调用时拒绝更干净
+        from ..utils.app_settings import get_interviews_enabled
+        if not get_interviews_enabled():
+            tools.pop("interview_agents", None)
+        return tools
     
     def _execute_tool(self, tool_name: str, parameters: Dict[str, Any], report_context: str = "") -> str:
         """

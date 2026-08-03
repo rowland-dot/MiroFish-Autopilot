@@ -58,3 +58,15 @@ def test_active_model_unknown_sanitizes_to_default(tmp_path):
     p = str(tmp_path / "s.json")
     set_setting("active_model", "gpt-9", path=p)
     assert get_active_model(path=p) == "minimax-m3"
+
+
+def test_interviews_default_off(tmp_path):
+    # 报告采访：上游功能，但历史上因进程已死而「意外免费」。默认关闭以
+    # 匹配用户既有经济学；设置页开关按需打开（~10 次推理/份报告）。
+    from app.utils.app_settings import get_interviews_enabled, set_setting
+    p = str(tmp_path / "s.json")
+    assert get_interviews_enabled(path=p) is False
+    set_setting("interviews_enabled", True, path=p)
+    assert get_interviews_enabled(path=p) is True
+    set_setting("interviews_enabled", "garbage", path=p)
+    assert get_interviews_enabled(path=p) is False

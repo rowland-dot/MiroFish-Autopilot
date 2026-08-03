@@ -64,6 +64,7 @@ def get_active_model(path: str = None) -> str:
 BOOL_SETTINGS = {
     "graph_memory_update_enabled": False,  # 模拟每轮写回图谱（默认关闭，省 Zep 额度）
     "graph_viz_enabled": True,             # 前端展示实时图谱（可关闭以省 Zep 读取）
+    "interviews_enabled": False,           # 报告采访：报告期间与 Agent 实时对话（约10次推理/份）
 }
 
 
@@ -72,3 +73,9 @@ def get_bool(key: str, path: str = None) -> bool:
     default = BOOL_SETTINGS.get(key, False)
     value = get_setting(key, default, path=path)
     return value if isinstance(value, bool) else bool(default)
+
+
+# 报告采访：报告生成期间与模拟世界中的 Agent 实时对话（约 10 次推理/份）。
+# 历史上该上游功能因进程已死而「意外免费」；默认关闭以匹配既有成本预期。
+def get_interviews_enabled(path: str = None) -> bool:
+    return get_bool("interviews_enabled", path=path)

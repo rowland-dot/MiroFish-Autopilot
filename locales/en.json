@@ -102,7 +102,11 @@
     "queueFullBtn": "Queue full",
     "queueFullSub": "Running 1/1 · queued 2/2 — a slot frees automatically",
     "manualHintBusy": ": unavailable while an auto job is in progress.",
-    "autoHintBusy": ": new jobs queue up and start automatically in order."
+    "autoHintBusy": ": new jobs queue up and start automatically in order.",
+    "interviewsLabel": "Report interviews",
+    "interviewsOn": "On",
+    "interviewsOff": "Off",
+    "interviewsHint": "When on, report generation interviews live simulated agents (~10 inferences per report) — more vivid reports, higher token use."
   },
   "autoPilot": {
     "pill": "AUTO-PILOT",
