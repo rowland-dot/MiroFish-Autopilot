@@ -77,7 +77,7 @@
     "autoRunSubtitle": "全程无人值守 · 1 → 5 步自动推进",
     "manualHint": "：与现在完全一致——每步完成后由你点击进入下一步。",
     "queueFullHint": "队列已满（1 运行 + 2 等待）——请等待空出槽位。",
-    "autoHint": "：使用系统推荐配置自动完成全部步骤，直到报告生成；期间可随时退出。",
+    "autoHint": "：使用系统推荐配置自动完成全部步骤，直到报告生成。",
     "engineSettings": "引擎设置",
     "thinkLevelLabel": "思考深度",
     "thinkLevelEconomy": "经济",
@@ -96,7 +96,13 @@
     "jobCreated": "推演任务已创建，已加入队列",
     "autoSingleFileHint": "自动直达模式目前仅使用第一个文件",
     "collapseBanner": "收起",
-    "expandBanner": "展开介绍"
+    "expandBanner": "展开介绍",
+    "joinQueueBtn": "加入队列",
+    "joinQueueSub": "任务进行中 · 运行 {a}/1 · 排队 {q}/2",
+    "queueFullBtn": "队列已满",
+    "queueFullSub": "运行 1/1 · 排队 2/2 — 完成后自动空位",
+    "manualHintBusy": "：有自动任务进行中，暂不可用。",
+    "autoHintBusy": "：新任务将排队，按顺序自动开始。"
   },
   "autoPilot": {
     "pill": "自动驾驶",

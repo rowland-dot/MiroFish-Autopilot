@@ -77,7 +77,7 @@
     "autoRunSubtitle": "unattended · auto-advances steps 1 → 5",
     "manualHint": ": same as always — you click into each next step yourself.",
     "queueFullHint": "Queue full (1 running + 2 waiting) — wait for a slot to free up.",
-    "autoHint": ": runs every step with recommended settings until the report is done; exit anytime.",
+    "autoHint": ": runs every step with recommended settings until the report is done.",
     "engineSettings": "Engine Settings",
     "thinkLevelLabel": "Think level",
     "thinkLevelEconomy": "Economy",
@@ -96,7 +96,13 @@
     "jobCreated": "Job created — added to the queue",
     "autoSingleFileHint": "Auto mode currently uses only the first file",
     "collapseBanner": "Collapse",
-    "expandBanner": "Show intro"
+    "expandBanner": "Show intro",
+    "joinQueueBtn": "Join queue",
+    "joinQueueSub": "Job in progress · running {a}/1 · queued {q}/2",
+    "queueFullBtn": "Queue full",
+    "queueFullSub": "Running 1/1 · queued 2/2 — a slot frees automatically",
+    "manualHintBusy": ": unavailable while an auto job is in progress.",
+    "autoHintBusy": ": new jobs queue up and start automatically in order."
   },
   "autoPilot": {
     "pill": "AUTO-PILOT",

@@ -289,7 +289,7 @@
                 <button
                   class="start-engine-btn"
                   @click="startSimulation"
-                  :disabled="!canSubmit || loading || atCapacity"
+                  :disabled="!canSubmit || loading || atCapacity || autoBusy"
                 >
                   <span v-if="!loading">{{ $t('home.startEngine') }}</span>
                   <span v-else>{{ $t('home.initializing') }}</span>
@@ -300,14 +300,29 @@
                   @click="startAutoRun"
                   :disabled="!canSubmit || loading || atCapacity"
                 >
-                  <span class="auto-main">⚡ {{ $t('home.autoRunBtn') }}</span>
-                  <span class="auto-sub">{{ $t('home.autoRunSubtitle') }}</span>
+                  <template v-if="atCapacity">
+                    <span class="auto-main">{{ $t('home.queueFullBtn') }}</span>
+                    <span class="auto-sub">{{ $t('home.queueFullSub') }}</span>
+                  </template>
+                  <template v-else-if="autoBusy">
+                    <span class="auto-main">⚡ {{ $t('home.joinQueueBtn') }}</span>
+                    <span class="auto-sub">{{ $t('home.joinQueueSub', { a: qCounts.active, q: qCounts.queued }) }}</span>
+                  </template>
+                  <template v-else>
+                    <span class="auto-main">⚡ {{ $t('home.autoRunBtn') }}</span>
+                    <span class="auto-sub">{{ $t('home.autoRunSubtitle') }}</span>
+                  </template>
                 </button>
               </div>
-              <div v-if="atCapacity" class="queue-full-hint">{{ $t('home.queueFullHint') }}</div>
               <div class="btn-hint">
-                <span class="h"><b>{{ $t('home.startEngine') }}</b>{{ $t('home.manualHint') }}</span>
-                <span class="h"><b>{{ $t('home.autoRunBtn') }}</b>{{ $t('home.autoHint') }}</span>
+                <template v-if="autoBusy || atCapacity">
+                  <span class="h"><b>{{ $t('home.startEngine') }}</b>{{ $t('home.manualHintBusy') }}</span>
+                  <span class="h"><b>{{ $t('home.joinQueueBtn') }}</b>{{ $t('home.autoHintBusy') }}</span>
+                </template>
+                <template v-else>
+                  <span class="h"><b>{{ $t('home.startEngine') }}</b>{{ $t('home.manualHint') }}</span>
+                  <span class="h"><b>{{ $t('home.autoRunBtn') }}</b>{{ $t('home.autoHint') }}</span>
+                </template>
               </div>
             </div>
           </div>
@@ -335,7 +350,7 @@ import { getSimulationHistory, getSystemStatus } from '../api/simulation'
 import { selectPrompts, addHidden, PROMPT_CAP } from '../utils/promptHistory'
 import { enableAutoPilot, disableAutoPilot } from '../utils/autoPilot'
 import { getSettings, updateSettings } from '../api/settings'
-import { pipelineStore } from '../store/pipelineQueue'
+import { pipelineStore, queueCounts } from '../store/pipelineQueue'
 import { fileToB64 } from '../store/fileCodec'
 import { readCollapsed, writeCollapsed } from '../utils/bannerPref'
 
@@ -487,6 +502,10 @@ onMounted(async () => {
 // 前端 store 是同步权威闸门；/api/status 作为二级保险
 const capacityFull = ref(false)
 const atCapacity = computed(() => capacityFull.value || pipelineStore.capacityFull.value)
+// 队列状态载体：有任务进行中/排队时，自动直达按钮变身「加入队列」，
+// 启动引擎禁用（自动任务运行期间不可手动分步）
+const qCounts = computed(() => queueCounts(pipelineStore.raw()))
+const autoBusy = computed(() => qCounts.value.active > 0 || qCounts.value.queued > 0)
 let capacityTimer = null
 const refreshCapacity = async () => {
   try {

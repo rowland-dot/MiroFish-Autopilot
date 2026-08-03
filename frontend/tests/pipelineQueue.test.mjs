@@ -197,3 +197,16 @@ test('acked tombstone re-arms when the server still lists the id (resurrection)'
   assert.equal(out.tombstones[0]._ackedAt, null, 'must re-arm the DELETE retry')
   assert.equal(out.entries.length, 0, 'tombstone still suppresses the ghost')
 })
+
+test('queueCounts reports drivable active/queued occupancy for the button state', async () => {
+  const { queueCounts } = await import('../src/store/pipelineQueue.js')
+  const q = { entries: [
+    { _tmpId: 'a', status: 'running' },
+    { _tmpId: 'b', status: 'queued' },
+    { _tmpId: 'c', status: 'queued', _displayOnly: true },   // other browser's job: shown but not counted twice? counted — occupies a real slot
+    { _tmpId: 'd', status: 'failed' },
+  ] }
+  const c = queueCounts(q)
+  assert.equal(c.active, 1)
+  assert.equal(c.queued, 2)
+})

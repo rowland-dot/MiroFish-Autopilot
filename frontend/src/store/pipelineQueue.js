@@ -21,6 +21,14 @@ function activeCount(q) { return q.entries.filter(e => drivable(e) && ACTIVE_STA
 function queuedCount(q) { return q.entries.filter(e => drivable(e) && e.status === 'queued').length }
 
 export function activeEntry(q) { return q.entries.find(e => drivable(e) && ACTIVE_STATUSES.includes(e.status)) || null }
+// 供按钮状态使用：当前占用（含 _displayOnly——别的浏览器的任务同样占真实槽位）
+export function queueCounts(q) {
+  return {
+    active: q.entries.filter(e => ACTIVE_STATUSES.includes(e.status)).length,
+    queued: q.entries.filter(e => e.status === 'queued').length,
+  }
+}
+
 export function isFull(q) { return activeCount(q) >= SLOT_LIMIT && queuedCount(q) >= QUEUE_LIMIT }
 export function capacityFull(q) { return isFull(q) }
 
