@@ -263,33 +263,25 @@ test('reused graph still short-circuits without polling', async () => {
 // 根因修正：OASIS 子进程在轮次跑完后「故意不退出」，等待 interview 命令
 // （上游持久化设计）。自动流程必须：轮次完成 -> 就地生成报告（进程活着，
 // interview 工具才有效）-> 报告完成后主动 stop 释放槽位。
-test('rounds-complete on a LIVE process: report runs TO COMPLETION (interviews alive), then stop, then done', async () => {
+// 生命周期契约（2026-08-04 实机验证）：后端拒绝在 run 非终态时生成报告，
+// 而持久化子进程会永远停在 running。因此必须 close-env 转终态后再报告；
+// 「报告期间活体采访」在后端 gate 下不可能，此前的假设是错的。
+test('rounds-complete on a held-open process: close-env, wait terminal, then report', async () => {
   const calls = []
   const api = mockApi(calls)
-  let n = 0
-  api.getRunStatus = async () => {
-    n++
-    return { data: { runner_status: 'running', current_round: 72, total_rounds: 72,
-                     twitter_completed: true, reddit_completed: true } }
-  }
-  // 报告是异步任务：generate 立刻返回，写作还要很多分钟。「完成」的定义
-  // （用户裁定）= 报告可下载。停进程必须等报告写完——interview 在写作期发生。
-  let statusPolls = 0
-  api.getReportStatus = async () => {
-    statusPolls++
-    calls.push('report-status')
-    return { data: { status: statusPolls < 3 ? 'generating' : 'completed' } }
-  }
-  api.stopSimulation = async () => { calls.push('stop'); return { data: { runner_status: 'stopped' } } }
+  let closed = false
+  api.getRunStatus = async () => ({ data: {
+    runner_status: closed ? 'completed' : 'running',
+    current_round: 72, total_rounds: 72,
+    twitter_completed: true, reddit_completed: true } })
+  api.closeSimulationEnv = async () => { calls.push('close-env'); closed = true; return { data: {} } }
+  api.stopSimulation = async () => { calls.push('stop'); return { data: {} } }
   const d = deps(api)
   await runOne({ _tmpId: 'h1', file: {}, prompt: 'p', projectId: 'proj_1', graphId: 'g1', realSimId: 'sim_1', status: 'running' }, d)
-  const lastStatusPoll = calls.lastIndexOf('report-status')
-  const iStop = calls.indexOf('stop')
-  assert.ok(calls.includes('report'))
-  assert.ok(statusPolls >= 3, 'must poll the report to completion before anything else')
-  assert.ok(iStop > lastStatusPoll, 'stop only AFTER the report is downloadable')
+  assert.ok(calls.includes('close-env'), 'held-open env must be closed first')
+  assert.ok(calls.indexOf('close-env') < calls.indexOf('report'),
+    'report is only accepted once the run is terminal')
   assert.equal(d._rec.statuses.at(-1), 'done')
-  assert.ok(n < 10)
 })
 
 test('normal terminal run still reports without needing a stop call', async () => {
@@ -301,4 +293,51 @@ test('normal terminal run still reports without needing a stop call', async () =
   await runOne({ _tmpId: 'h2', file: {}, prompt: 'p', projectId: 'proj_1', graphId: 'g1', realSimId: 'sim_1', status: 'running' }, d)
   assert.ok(calls.includes('report'))
   assert.ok(!calls.includes('stop'), 'already terminal: no stop needed')
+})
+
+// 后端拒绝在 run 非终态时生成报告；持久化进程永远停在 running。
+// 浏览器驱动器此前直接 generateReport -> 409 -> best-effort 吞掉 -> 标记 done，
+// 结果是「完成但没有报告」的空任务，用户完全看不到原因。
+test('held-open run: closes the env first, then reports (no silent report-less done)', async () => {
+  const calls = []
+  const api = mockApi(calls)
+  let closed = false
+  api.getRunStatus = async () => ({ data: {
+    runner_status: closed ? 'completed' : 'running',
+    current_round: 72, total_rounds: 72,
+    twitter_completed: true, reddit_completed: true } })
+  api.closeSimulationEnv = async () => { calls.push('close-env'); closed = true; return { data: { success: true } } }
+  api.stopSimulation = async () => { calls.push('stop'); return { data: {} } }
+  const d = deps(api)
+  await runOne({ _tmpId: 'c1', file: {}, prompt: 'p', projectId: 'p', graphId: 'g', realSimId: 'sim_1', status: 'running' }, d)
+  assert.ok(calls.includes('close-env'), 'must gracefully close the held-open env')
+  assert.ok(calls.indexOf('close-env') < calls.indexOf('report'), 'report only after terminal')
+  assert.equal(d._rec.statuses.at(-1), 'done')
+})
+
+test('close-env failure falls back to force stop before reporting', async () => {
+  const calls = []
+  const api = mockApi(calls)
+  let closed = false
+  api.getRunStatus = async () => ({ data: {
+    runner_status: closed ? 'stopped' : 'running',
+    current_round: 72, total_rounds: 72,
+    twitter_completed: true, reddit_completed: true } })
+  api.closeSimulationEnv = async () => { calls.push('close-env'); throw new Error('env not responding') }
+  api.stopSimulation = async () => { calls.push('stop'); closed = true; return { data: {} } }
+  await runOne({ _tmpId: 'c2', file: {}, prompt: 'p', projectId: 'p', graphId: 'g', realSimId: 'sim_1', status: 'running' }, deps(api))
+  assert.ok(calls.indexOf('stop') < calls.indexOf('report'))
+})
+
+test('a rejected report fails the job instead of finishing report-less', async () => {
+  const calls = []
+  const api = mockApi(calls)
+  api.getRunStatus = async () => ({ data: { runner_status: 'completed' } })
+  api.generateReport = async () => { throw new Error('409 CONFLICT') }
+  const patches = []
+  const d = deps(api)
+  d.store.patch = (_id, p) => patches.push(p)
+  await runOne({ _tmpId: 'c3', file: {}, prompt: 'p', projectId: 'p', graphId: 'g', realSimId: 'sim_1', status: 'running' }, d)
+  assert.equal(d._rec.statuses.at(-1), 'failed')
+  assert.ok(patches.some(p => /409/.test(p.error || '')))
 })
