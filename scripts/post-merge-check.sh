@@ -9,5 +9,10 @@ backend/.venv/Scripts/python.exe -m pytest \
   backend/tests/test_system_status.py \
   backend/tests/test_run_state_reconcile.py \
   backend/tests/test_boot_restore.py \
+  backend/tests/test_job_store.py \
+  backend/tests/test_job_stages.py \
+  backend/tests/test_job_driver.py \
+  backend/tests/test_jobs_api.py \
+  backend/tests/test_cli_args.py \
   -q || { echo; echo "!!! MERGE DROPPED A GUARD RAIL — fix before deploying !!!"; exit 1; }
 echo "guard rails intact."

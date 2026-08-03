@@ -86,6 +86,16 @@ def create_app(config_class=Config):
     from .api.pipeline import pipeline_bp
     app.register_blueprint(pipeline_bp, url_prefix='/api/pipeline')
 
+    # 无头代理接口 + 服务端驱动器：无浏览器也能提交与推进任务
+    from .api.jobs import jobs_bp
+    app.register_blueprint(jobs_bp, url_prefix='/api/jobs')
+    from .services.job_driver import start_job_driver
+    # debug 模式下 Werkzeug reloader 会让 create_app 跑两次（父进程 + 子进程），
+    # 两个驱动线程会同时推进同一条目——正是双驱动那类事故。只在真正提供
+    # 服务的进程里启动。
+    if not debug_mode or is_reloader_process:
+        start_job_driver(Config.UPLOAD_FOLDER)
+
     # 启动恢复：HF 随时会重启 Space（临时磁盘清空）。数据目录为空时自动
     # 从备份 Dataset 拉回最新档案——否则无人值守的重启会静默丢掉全部历史。
     from .services.boot_restore import restore_latest_if_empty
