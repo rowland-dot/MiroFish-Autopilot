@@ -19,6 +19,14 @@ class TaskStatus(str, Enum):
     PROCESSING = "processing"    # 处理中
     COMPLETED = "completed"      # 已完成
     FAILED = "failed"            # 失败
+    CANCELLED = "cancelled"      # 已取消（删除任务时协作式终止后台线程）
+
+
+class TaskCancelled(Exception):
+    """协作式取消：工作线程在下一次进度更新时收到此异常并立即收尾退出。"""
+    def __init__(self, task_id: str):
+        self.task_id = task_id
+        super().__init__(f"task cancelled: {task_id}")
 
 
 @dataclass
@@ -100,6 +108,25 @@ class TaskManager:
         
         return task_id
     
+    def cancel_task(self, task_id: str) -> bool:
+        """标记取消。终态任务不可覆盖。工作线程在下次 update_task 时感知。"""
+        with self._task_lock:
+            task = self._tasks.get(task_id)
+            if not task or task.status in (TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.CANCELLED):
+                return False
+            task.status = TaskStatus.CANCELLED
+            task.message = "已取消"
+            task.updated_at = datetime.now()
+            return True
+
+    def cancel_tasks_for_simulation(self, simulation_id: str) -> list:
+        """取消该模拟名下所有活跃任务（prepare/report 的 metadata 带 simulation_id）。"""
+        with self._task_lock:
+            ids = [t.task_id for t in self._tasks.values()
+                   if t.metadata.get("simulation_id") == simulation_id
+                   and t.status in (TaskStatus.PENDING, TaskStatus.PROCESSING)]
+        return [tid for tid in ids if self.cancel_task(tid)]
+
     def get_task(self, task_id: str) -> Optional[Task]:
         """获取任务"""
         with self._task_lock:
@@ -130,6 +157,10 @@ class TaskManager:
         with self._task_lock:
             task = self._tasks.get(task_id)
             if task:
+                if task.status == TaskStatus.CANCELLED:
+                    # 协作式取消：工作线程的下一次进度更新即感知点。
+                    # 终态不可被后续 fail/complete 覆盖（见调用方 except 顺序）。
+                    raise TaskCancelled(task_id)
                 task.updated_at = datetime.now()
                 if status is not None:
                     task.status = status
@@ -145,7 +176,13 @@ class TaskManager:
                     task.progress_detail = progress_detail
     
     def complete_task(self, task_id: str, result: Dict):
-        """标记任务完成"""
+        """标记任务完成（已取消的任务保持取消态）"""
+        try:
+            self._finish(task_id, result=result)
+        except TaskCancelled:
+            pass
+
+    def _finish(self, task_id: str, result: Dict):
         self.update_task(
             task_id,
             status=TaskStatus.COMPLETED,
@@ -155,7 +192,13 @@ class TaskManager:
         )
     
     def fail_task(self, task_id: str, error: str):
-        """标记任务失败"""
+        """标记任务失败（已取消的任务保持取消态——工作线程晚到的报错不覆盖）"""
+        try:
+            self._fail(task_id, error)
+        except TaskCancelled:
+            pass
+
+    def _fail(self, task_id: str, error: str):
         self.update_task(
             task_id,
             status=TaskStatus.FAILED,

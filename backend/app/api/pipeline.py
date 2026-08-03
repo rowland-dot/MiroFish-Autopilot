@@ -12,7 +12,7 @@ from flask import Blueprint, jsonify, request
 
 from ..config import Config
 from ..utils.pipeline_state import (
-    default_path, expire_stale_active, mutate_entries, prune_entries, reconcile_with_runs,
+    default_path, expire_stale_active, load_entries, mutate_entries, prune_entries, reconcile_with_runs,
     remove_entry, run_status_reader, upsert_entry,
 )
 
@@ -54,8 +54,46 @@ def upsert_pipeline():
         default_path(), lambda es: _heal(upsert_entry(es, entry))))
 
 
+def cancel_entry_work(entry, cancel_task, cancel_for_sim, stop_sim):
+    """删除条目 = 零残留：取消其名下所有后台工作。纯函数，依赖注入便于测试。
+
+    - buildTaskId：图谱构建线程（协作式取消，下次进度更新即退出）
+    - simId：prepare/report 任务（metadata 匹配）+ 停掉模拟进程本身
+    """
+    if not entry:
+        return
+    if entry.get("buildTaskId"):
+        try:
+            cancel_task(entry["buildTaskId"])
+        except Exception:
+            pass
+    if entry.get("simId"):
+        try:
+            cancel_for_sim(entry["simId"])
+        except Exception:
+            pass
+        try:
+            stop_sim(entry["simId"])
+        except Exception:
+            pass
+
+
+def _stop_sim_if_running(simulation_id):
+    from ..services.simulation_runner import SimulationRunner
+    if simulation_id in SimulationRunner.list_running():
+        SimulationRunner.stop_simulation(simulation_id)
+
+
 @pipeline_bp.route('/<tmp_id>', methods=['DELETE'])
 def delete_pipeline(tmp_id):
-    """删除一条（取消排队 / 清理）。未知 id 也返回 200，便于幂等重试。"""
+    """删除一条（取消排队 / 清理）。未知 id 也返回 200，便于幂等重试。
+
+    删除即取消：该条目名下已在跑的后台工作（建图/prepare/报告/模拟进程）
+    一并终止——此前它们会作为孤儿跑完，白烧 Zep 与 LLM 配额。
+    """
+    from ..models.task import TaskManager
+    entry = next((e for e in load_entries(default_path()) if e.get("tmpId") == tmp_id), None)
+    tm = TaskManager()
+    cancel_entry_work(entry, tm.cancel_task, tm.cancel_tasks_for_simulation, _stop_sim_if_running)
     return _ok(mutate_entries(
         default_path(), lambda es: _heal(remove_entry(es, tmp_id))))
