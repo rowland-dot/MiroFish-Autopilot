@@ -30,6 +30,9 @@ class FakeHttp:
         if path.endswith("/simulation/stop"):
             self.calls.append("stop")
             return {"runner_status": "stopped"}
+        if path.endswith("/simulation/close-env"):
+            self.calls.append("close-env")
+            return {"success": True}
         if path.endswith("/report/generate"):
             self.calls.append("report")
             return {"report_id": "rep_1"}
@@ -62,7 +65,9 @@ def _entry(**over):
 def test_full_sequence_reaches_done():
     http = FakeHttp()
     out = advance(_entry(), http, sleep=lambda s: None, file_bytes=b"x")
-    assert http.calls == ["ontology", "build", "create", "prepare", "start", "report", "stop"]
+    # 正确序列：持久化进程先 close-env 转终态，之后才允许生成报告
+    assert http.calls == ["ontology", "build", "create", "prepare", "start",
+                          "close-env", "report"]
     assert out["status"] == "done"
     assert out["simId"] == "sim_1"
     assert out["reportId"] == "rep_1"
@@ -86,13 +91,13 @@ def test_existing_report_is_not_regenerated():
     assert out["status"] == "done"
 
 
-def test_held_open_process_is_reported_then_stopped():
-    # 上游持久化设计：轮次跑满后子进程不退出，等待 interview 命令。
-    # 必须在进程存活时生成报告（采访要活体），随后主动 stop 释放槽位。
-    http = FakeHttp(run_seq=["running", "running", "running"])
+def test_held_open_process_is_closed_before_reporting():
+    # 上游持久化设计：轮次跑满后子进程不退出（等 interview 命令），run_state
+    # 永远停在 running。后端又拒绝在非终态生成报告——必须先 close-env。
+    http = FakeHttp(run_seq=["running", "running", "completed"])
     out = advance(_entry(projectId="p", graphId="g", simId="s"),
                   http, sleep=lambda s: None, file_bytes=b"x")
-    assert http.calls.index("report") < http.calls.index("stop")
+    assert http.calls.index("close-env") < http.calls.index("report")
     assert out["status"] == "done"
 
 
@@ -177,3 +182,88 @@ def test_deleted_entry_during_report_poll_is_abandoned():
                   http, sleep=lambda s: None, file_bytes=b"x",
                   is_gone=lambda: gone["v"])
     assert out["status"] == "cancelled"
+
+
+def test_held_open_closes_env_then_reports_after_terminal():
+    # 后端拒绝在 run 非终态时生成报告；持久化进程会永远停在 running。
+    # 正确序列（与 UI 一致）：close-env 优雅退出 -> 等终态 -> 再生成报告。
+    http = FakeHttp(run_seq=["running", "running"])
+    closed = {"v": False}
+    orig_post, orig_get = http.post, http.get
+
+    def post(path, json=None):
+        if path.endswith("/simulation/close-env"):
+            http.calls.append("close-env")
+            closed["v"] = True
+            return {"success": True}
+        return orig_post(path, json=json)
+
+    def get(path):
+        if path.endswith("/run-status"):
+            return {"runner_status": "completed" if closed["v"] else "running",
+                    "current_round": 72, "total_rounds": 72,
+                    "twitter_completed": True, "reddit_completed": True}
+        return orig_get(path)
+
+    http.post, http.get = post, get
+    out = advance(_entry(projectId="p", graphId="g", simId="s"),
+                  http, sleep=lambda s: None, file_bytes=b"x")
+    assert "close-env" in http.calls, "must gracefully close the held-open env"
+    assert http.calls.index("close-env") < http.calls.index("report"), \
+        "report only after the run is terminal"
+    assert out["status"] == "done"
+
+
+def test_close_env_failure_falls_back_to_force_stop():
+    http = FakeHttp(run_seq=["running", "running"])
+    closed = {"v": False}
+    orig_post, orig_get = http.post, http.get
+
+    def post(path, json=None):
+        if path.endswith("/simulation/close-env"):
+            http.calls.append("close-env")
+            raise RuntimeError("env not responding")
+        if path.endswith("/simulation/stop"):
+            http.calls.append("stop")
+            closed["v"] = True
+            return {"runner_status": "stopped"}
+        return orig_post(path, json=json)
+
+    def get(path):
+        if path.endswith("/run-status"):
+            return {"runner_status": "stopped" if closed["v"] else "running",
+                    "current_round": 72, "total_rounds": 72,
+                    "twitter_completed": True, "reddit_completed": True}
+        return orig_get(path)
+
+    http.post, http.get = post, get
+    out = advance(_entry(projectId="p", graphId="g", simId="s"),
+                  http, sleep=lambda s: None, file_bytes=b"x")
+    assert http.calls.index("stop") < http.calls.index("report")
+    assert out["status"] == "done"
+
+
+def test_report_rejection_fails_the_job_instead_of_silently_finishing():
+    # 「完成」= 报告可下载。报告拒绝/失败绝不能静默标记 done（无报告的空任务）
+    http = FakeHttp(run_seq=["completed"])
+    orig_post = http.post
+
+    def post(path, json=None):
+        if path.endswith("/report/generate"):
+            raise RuntimeError("409 Client Error: CONFLICT")
+        return orig_post(path, json=json)
+
+    http.post = post
+    out = advance(_entry(projectId="p", graphId="g", simId="s"),
+                  http, sleep=lambda s: None, file_bytes=b"x")
+    assert out["status"] == "failed"
+    assert "409" in out["error"]
+
+
+def test_terminal_run_is_never_restarted_on_resume():
+    # stopped/failed 也是终态：绝不能再 force start 一遍
+    for st in ("stopped", "failed"):
+        http = FakeHttp(run_seq=[st])
+        advance(_entry(projectId="p", graphId="g", simId="s"),
+                http, sleep=lambda s: None, file_bytes=b"x")
+        assert "start" not in http.calls, f"{st} must not be restarted"

@@ -12,6 +12,8 @@
 """
 
 TERMINAL_RUN = ("completed", "stopped", "failed")
+# 关停后等待 run_state 转终态的上限（close-env 通常 ~10 秒内完成）
+CLOSE_WAIT_MAX = 30
 PREPARED = ("completed", "ready")
 
 # 报告轮询上限（与浏览器驱动器一致 ~45 分钟）。无上限会把唯一的驱动线程
@@ -99,7 +101,7 @@ def advance(entry: dict, http, sleep, file_bytes: bytes,
 
         held_open = False
         pre = http.get(f"/api/simulation/{e['simId']}/run-status").get("runner_status")
-        if pre != "completed":
+        if pre not in TERMINAL_RUN:
             if pre != "running":
                 http.post("/api/simulation/start", json={
                     "simulation_id": e["simId"], "platform": "parallel", "force": True,
@@ -123,6 +125,24 @@ def advance(entry: dict, http, sleep, file_bytes: bytes,
         if gone():
             return _abandon()
 
+        # 后端拒绝在 run 非终态时生成报告，而持久化进程会永远停在 running。
+        # 与 UI 一致的正确序列：close-env 优雅退出（失败则强停）-> 等终态 -> 报告。
+        # 采访无法在报告期使用活体进程（后端 gate 不允许），这是上游的既定契约。
+        if held_open:
+            try:
+                http.post("/api/simulation/close-env",
+                          json={"simulation_id": e["simId"], "timeout": 15})
+            except Exception:  # noqa: BLE001 — 优雅关闭失败就强停
+                http.post("/api/simulation/stop", json={"simulation_id": e["simId"]})
+            for _ in range(CLOSE_WAIT_MAX):
+                if gone():
+                    return _abandon()
+                rs = http.get(
+                    f"/api/simulation/{e['simId']}/run-status").get("runner_status")
+                if rs in TERMINAL_RUN:
+                    break
+                sleep(2)
+
         _save(status="reporting")
         if not e.get("reportId"):
             r = http.post("/api/report/generate", json={
@@ -137,9 +157,6 @@ def advance(entry: dict, http, sleep, file_bytes: bytes,
                     if st in ("completed", "failed"):
                         break
                     sleep(REPORT_POLL_SECONDS)
-
-        if held_open:
-            http.post("/api/simulation/stop", json={"simulation_id": e["simId"]})
 
         if gone():
             return _abandon()

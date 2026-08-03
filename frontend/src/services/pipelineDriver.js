@@ -140,7 +140,7 @@ export async function runOne(entry, deps, inFlight = new Set()) {
       // finished 72/72 run from round 0. Check first: completed -> straight
       // to report; already live -> just poll; only otherwise start.
       const pre = ((await api.getRunStatus(simId)).data || {}).runner_status
-      if (pre !== 'completed') {
+      if (!TERMINAL_RUN.includes(pre)) {
         if (pre !== 'running') {
           await withRetry(() => api.startSimulation({ simulation_id: simId, platform: 'parallel', force: true }), sleep)
         }
@@ -190,12 +190,30 @@ export async function runOne(entry, deps, inFlight = new Set()) {
     // kicks report generation after the run. Best-effort: a report failure
     // does not fail the whole pipeline (the run + graph still succeeded).
     {
+      // 后端拒绝在 run 非终态时生成报告，而持久化进程会永远停在 running：
+      // 直接 generateReport 会 409，被 best-effort 吞掉后任务标记 done 却没有
+      // 报告。正确序列（与步骤页一致）：close-env 优雅退出（失败则强停）->
+      // 等终态 -> 再生成报告。
+      if (heldOpen) {
+        try {
+          await api.closeSimulationEnv({ simulation_id: simId, timeout: 15 })
+        } catch {
+          try { await api.stopSimulation({ simulation_id: simId }) } catch { /* 看门狗兜底 */ }
+        }
+        for (let i = 0; i < 30; i++) {
+          if (isGone()) return
+          const rs = ((await api.getRunStatus(simId)).data || {}).runner_status
+          if (TERMINAL_RUN.includes(rs)) break
+          await sleep(2000)
+        }
+      }
+
       store.setStatus(id, 'reporting'); signal()
       // Resume guard: a stored reportId means the report already exists —
       // regenerating with force_regenerate would burn LLM calls and
       // overwrite the finished report on every browser refresh.
       if (!entry.reportId) {
-        try {
+        {
           const r = (await api.generateReport({ simulation_id: simId, force_regenerate: true })).data || {}
           // keep the report id so an observing page can follow through to it
           if (r.report_id) store.patch(id, { reportId: r.report_id })
@@ -211,11 +229,7 @@ export async function runOne(entry, deps, inFlight = new Set()) {
               await sleep(30000)
             }
           }
-        } catch (e) { /* report is best-effort */ }
-      }
-      // 持久化子进程：报告完成后主动停掉，否则它永远占着并发槽位
-      if (heldOpen) {
-        try { await api.stopSimulation({ simulation_id: simId }) } catch { /* 看门狗兜底 */ }
+        }
       }
       store.setStatus(id, 'done'); signal()
     }
