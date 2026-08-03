@@ -263,7 +263,7 @@ test('reused graph still short-circuits without polling', async () => {
 // 根因修正：OASIS 子进程在轮次跑完后「故意不退出」，等待 interview 命令
 // （上游持久化设计）。自动流程必须：轮次完成 -> 就地生成报告（进程活着，
 // interview 工具才有效）-> 报告完成后主动 stop 释放槽位。
-test('rounds-complete on a LIVE process: report first (interviews alive), then stop', async () => {
+test('rounds-complete on a LIVE process: report runs TO COMPLETION (interviews alive), then stop, then done', async () => {
   const calls = []
   const api = mockApi(calls)
   let n = 0
@@ -272,16 +272,24 @@ test('rounds-complete on a LIVE process: report first (interviews alive), then s
     return { data: { runner_status: 'running', current_round: 72, total_rounds: 72,
                      twitter_completed: true, reddit_completed: true } }
   }
+  // 报告是异步任务：generate 立刻返回，写作还要很多分钟。「完成」的定义
+  // （用户裁定）= 报告可下载。停进程必须等报告写完——interview 在写作期发生。
+  let statusPolls = 0
+  api.getReportStatus = async () => {
+    statusPolls++
+    calls.push('report-status')
+    return { data: { status: statusPolls < 3 ? 'generating' : 'completed' } }
+  }
   api.stopSimulation = async () => { calls.push('stop'); return { data: { runner_status: 'stopped' } } }
   const d = deps(api)
   await runOne({ _tmpId: 'h1', file: {}, prompt: 'p', projectId: 'proj_1', graphId: 'g1', realSimId: 'sim_1', status: 'running' }, d)
-  const iReport = calls.indexOf('report')
+  const lastStatusPoll = calls.lastIndexOf('report-status')
   const iStop = calls.indexOf('stop')
-  assert.ok(iReport !== -1, 'report must run')
-  assert.ok(iStop !== -1, 'held-open process must be stopped to free the slot')
-  assert.ok(iReport < iStop, 'report BEFORE stop — interviews need the live process')
+  assert.ok(calls.includes('report'))
+  assert.ok(statusPolls >= 3, 'must poll the report to completion before anything else')
+  assert.ok(iStop > lastStatusPoll, 'stop only AFTER the report is downloadable')
   assert.equal(d._rec.statuses.at(-1), 'done')
-  assert.ok(n < 10, 'must not poll forever waiting for a process that never exits')
+  assert.ok(n < 10)
 })
 
 test('normal terminal run still reports without needing a stop call', async () => {

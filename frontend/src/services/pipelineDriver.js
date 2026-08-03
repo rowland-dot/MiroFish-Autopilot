@@ -199,6 +199,18 @@ export async function runOne(entry, deps, inFlight = new Set()) {
           const r = (await api.generateReport({ simulation_id: simId, force_regenerate: true })).data || {}
           // keep the report id so an observing page can follow through to it
           if (r.report_id) store.patch(id, { reportId: r.report_id })
+          // 「完成」的定义（用户裁定）：报告可下载才算完成。generate 是异步
+          // 任务，立刻返回；这里轮询到报告真正写完。停掉持久化子进程也必须
+          // 等到这之后——interview 调用发生在报告写作期间，需要活体进程。
+          if (r.report_id && api.getReportStatus) {
+            for (let i = 0; i < 90; i++) {          // 上限 ~45 分钟
+              if (isGone()) break
+              let st = ''
+              try { st = (((await api.getReportStatus(r.report_id)).data) || {}).status || '' } catch { /* 网络抖动继续等 */ }
+              if (st === 'completed' || st === 'failed') break
+              await sleep(30000)
+            }
+          }
         } catch (e) { /* report is best-effort */ }
       }
       // 持久化子进程：报告完成后主动停掉，否则它永远占着并发槽位
