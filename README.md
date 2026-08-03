@@ -8,6 +8,39 @@ app_port: 7860
 pinned: false
 ---
 
+# MiroFish-Autopilot
+
+> **A production-hardened fork of [666ghj/MiroFish](https://github.com/666ghj/MiroFish): submit jobs, walk away, come back to finished reports.**
+> 上游 MiroFish 的生产加固分支：提交任务即可离开，回来直接拿报告。
+
+Stock MiroFish runs one simulation while you babysit each step. This fork runs itself:
+
+### 🚦 Job queue · 任务队列
+- **1 running + 2 queued**, FIFO auto-promotion — submit up to 3 jobs and close the browser tab
+- Instant job cards with live stage badges (排队中 / 准备中 / 运行中 / 失败), survive refresh, restarts and redeploys
+- The launch button doubles as a live queue indicator (加入队列 / 队列已满); deleting a job **cancels all of its server-side work within seconds** — zero orphaned LLM spend
+- A job counts as done only when its report is **downloadable**; agent interviews run against the *live* simulation during report writing
+
+### 💰 Cost governance · 成本治理
+- **思考深度 (think level)**: economy mode halves simulation-agent reasoning tokens (MiniMax-validated)
+- **Round cap** (`MAX_SIM_HOURS`, default 72) and **activation cap** (`MAX_AGENTS_PER_HOUR`, default 8) — the config LLM can no longer silently pick a 2× costlier simulation
+- Graph reuse: resubmitting the same document + prompt skips ontology + Zep graph build entirely
+- Rate-limit-aware retries: transient 429s back off; plan-quota exhaustion fails fast with the real reason on the card
+
+### 🛡️ Self-healing ops · 自愈运维
+- **Watchdog** auto-stops runs wedged at the finish line (held-open processes can't freeze the queue overnight)
+- **Boot auto-restore**: the Space's ephemeral disk repopulates from the newest HF-dataset backup on every container start — random Hugging Face restarts no longer wipe your history
+- **Deploy guard**: deploys refuse to run while any simulation, build, prepare or report is in flight; data is backed up before and restored after every deploy
+- Nightly backups to a private HF dataset; post-merge guard-rail tests keep upstream merges from silently reverting any of the above
+
+### 🔀 Model switching · 模型切换
+- Deployment-level toggle between **MiniMax M3** and **DeepSeek V4 Pro** — flip providers when one hits its quota, mid-day, without redeploying
+
+All upstream features and design are preserved — full credit to the original authors below.
+本分支保留上游全部功能与设计，原始项目与作者见下文。
+
+---
+
 <div align="center">
 
 <img src="./static/image/MiroFish_logo_compressed.jpeg" alt="MiroFish Logo" width="75%"/>
