@@ -647,6 +647,19 @@ class SimulationConfigGenerator:
         if _clamped != _hours:
             logger.warning(f"模拟时长 {_hours}h 超出允许范围，已钳制为 {_clamped}h（上限 MAX_SIM_HOURS={_cap}）")
 
+        # 激活上限：上游合并后本体改为全文采样，实体数从 3-11 涨到 15-17，
+        # 配置 LLM 依实体数把每小时激活抬到 3-12（合并前 2-8）——单轮推理数
+        # 随激活数线性放大，整单成本 ~3x。钳回合并前包络；MAX_AGENTS_PER_HOUR 可调。
+        try:
+            _acap = int(_os.environ.get("MAX_AGENTS_PER_HOUR", "8"))
+        except ValueError:
+            _acap = 8
+        if agents_per_hour_max > _acap:
+            logger.warning(f"每小时激活上限 {agents_per_hour_max} 超出 MAX_AGENTS_PER_HOUR={_acap}，已钳制")
+            agents_per_hour_max = _acap
+        if agents_per_hour_min > agents_per_hour_max:
+            agents_per_hour_min = max(1, agents_per_hour_max // 2)
+
         return TimeSimulationConfig(
             total_simulation_hours=_clamped,
             minutes_per_round=result.get("minutes_per_round", 60),  # 默认每轮1小时

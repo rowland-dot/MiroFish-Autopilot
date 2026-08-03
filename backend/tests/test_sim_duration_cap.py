@@ -32,3 +32,39 @@ def test_absurdly_low_pick_is_floored():
 def test_cap_overridable_via_env(monkeypatch):
     monkeypatch.setenv("MAX_SIM_HOURS", "48")
     assert _parse(72) == 48
+
+
+# ---- activation cap (agents_per_hour) --------------------------------------
+# The upstream merge's whole-document ontology coverage tripled entity counts,
+# and the config LLM scales per-hour activation to entity count (2-8 pre-merge
+# -> 3-12 after). Round cost scales directly with activated agents. Clamp the
+# ceiling back to the pre-merge envelope; env-tunable like MAX_SIM_HOURS.
+
+def _parse_agents(hours_result):
+    gen = SimulationConfigGenerator.__new__(SimulationConfigGenerator)
+    cfg = gen._parse_time_config(hours_result, num_entities=17)
+    return cfg.agents_per_hour_min, cfg.agents_per_hour_max
+
+
+def test_activation_ceiling_clamped_to_8():
+    lo, hi = _parse_agents({"agents_per_hour_min": 5, "agents_per_hour_max": 12})
+    assert hi == 8
+    assert lo == 5
+
+
+def test_activation_within_cap_kept():
+    lo, hi = _parse_agents({"agents_per_hour_min": 2, "agents_per_hour_max": 6})
+    assert (lo, hi) == (2, 6)
+
+
+def test_activation_min_follows_ceiling_down():
+    # LLM picked min 10 / max 12 -> ceiling 8 must also pull min below it
+    lo, hi = _parse_agents({"agents_per_hour_min": 10, "agents_per_hour_max": 12})
+    assert hi == 8
+    assert lo <= hi
+
+
+def test_activation_cap_env_tunable(monkeypatch):
+    monkeypatch.setenv("MAX_AGENTS_PER_HOUR", "5")
+    _, hi = _parse_agents({"agents_per_hour_min": 2, "agents_per_hour_max": 12})
+    assert hi == 5
