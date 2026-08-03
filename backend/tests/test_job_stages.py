@@ -125,3 +125,55 @@ def test_failure_records_error_and_stops():
     out = advance(_entry(), http, sleep=lambda s: None, file_bytes=b"x")
     assert out["status"] == "failed"
     assert "429" in out["error"]
+
+
+def test_every_stage_transition_is_persisted_immediately():
+    # 只在最后落盘 = 状态查询几小时看不到进展，且重启后从头重跑整条流水线
+    http = FakeHttp()
+    seen = []
+    advance(_entry(), http, sleep=lambda s: None, file_bytes=b"x",
+            on_change=lambda e: seen.append((e["status"], e.get("projectId"),
+                                             e.get("simId"), e.get("reportId"))))
+    stages = [s[0] for s in seen]
+    assert "building" in stages and "creating" in stages
+    assert "preparing" in stages and "reporting" in stages
+    # ids 必须在各自阶段之后立刻可见（重启续跑靠它们）
+    assert any(p == "proj_1" for _, p, _, _ in seen)
+    assert any(s == "sim_1" for _, _, s, _ in seen)
+    assert seen[-1][0] == "done"
+
+
+def test_report_poll_is_bounded_not_infinite():
+    # 报告任务卡死时，无上限轮询会永久占死唯一的驱动线程，饿死整个队列
+    http = FakeHttp(run_seq=["completed"])
+    http.get_report_status = "generating"
+
+    def never_finishes(path):
+        if "/report/" in path and "/graph/" not in path:
+            return {"status": "generating"}
+        return FakeHttp.get(http, path)
+
+    http.get = never_finishes
+    slept = []
+    out = advance(_entry(projectId="p", graphId="g", simId="s"),
+                  http, sleep=lambda s: slept.append(s), file_bytes=b"x")
+    assert len(slept) <= 95, "report polling must be capped"
+    assert out["status"] == "done"       # best-effort：超时也放行，不卡死驱动器
+
+
+def test_deleted_entry_during_report_poll_is_abandoned():
+    http = FakeHttp(run_seq=["completed"])
+    gone = {"v": False}
+    original_get = http.get
+
+    def get(path):
+        if "/report/" in path and "/graph/" not in path:
+            gone["v"] = True
+            return {"status": "generating"}
+        return original_get(path)
+
+    http.get = get
+    out = advance(_entry(projectId="p", graphId="g", simId="s"),
+                  http, sleep=lambda s: None, file_bytes=b"x",
+                  is_gone=lambda: gone["v"])
+    assert out["status"] == "cancelled"
