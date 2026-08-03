@@ -84,3 +84,19 @@ def test_entry_delete_with_no_ids_is_a_noop():
                       cancel_for_sim=lambda s: calls.append(s),
                       stop_sim=lambda s: calls.append(s))
     assert calls == []
+
+
+def test_entry_delete_also_removes_never_ran_sim_record():
+    # 删除测试留下过一张「未命名模拟·失败」的幽灵卡片：任务与进程都死了，
+    # 但模拟的历史记录还在。从未真正运行过的模拟，删除条目时记录一并清掉
+    from app.api.pipeline import cancel_entry_work
+    calls = []
+    entry = {"tmpId": "x", "simId": "sim_9", "status": "preparing"}
+    cancel_entry_work(
+        entry,
+        cancel_task=lambda t: None,
+        cancel_for_sim=lambda s: [],
+        stop_sim=lambda s: None,
+        remove_record=lambda s: calls.append(("rm", s)),
+    )
+    assert ("rm", "sim_9") in calls

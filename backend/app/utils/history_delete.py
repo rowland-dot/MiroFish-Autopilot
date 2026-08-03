@@ -39,3 +39,24 @@ def delete_history_records(data_dir, simulation_id, project_id=None,
             graph_deleted = False  # 尽力而为，不阻断本地删除
 
     return {"removed": removed, "graph_deleted": graph_deleted}
+
+
+def project_still_referenced(data_dir: str, project_id: str, excluding_sim: str = None) -> bool:
+    """图谱复用后多个模拟共用一个 project/graph。删除某张卡片前检查：
+    是否还有其他模拟引用同一 project——有就绝不能删项目与图谱。"""
+    import json
+    sims_dir = os.path.join(os.path.abspath(data_dir), "simulations")
+    try:
+        entries = os.scandir(sims_dir)
+    except OSError:
+        return False
+    for e in entries:
+        if not e.is_dir() or e.name == excluding_sim:
+            continue
+        try:
+            with open(os.path.join(e.path, "state.json"), "r", encoding="utf-8") as f:
+                if json.load(f).get("project_id") == project_id:
+                    return True
+        except (OSError, json.JSONDecodeError):
+            continue
+    return False

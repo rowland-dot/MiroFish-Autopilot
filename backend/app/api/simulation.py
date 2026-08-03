@@ -1049,8 +1049,15 @@ def delete_history_entry(simulation_id: str):
         project_id = getattr(state, 'project_id', None) if state else None
         graph_id = None
         if project_id:
-            project = ProjectManager.get_project(project_id)
-            graph_id = getattr(project, 'graph_id', None) if project else None
+            # 图谱复用后多个模拟共用一个 project/graph：只要还有别的模拟
+            # 引用它，就绝不能连带删除项目与图谱（只删这条模拟记录）
+            from ..utils.history_delete import project_still_referenced
+            if project_still_referenced(Config.UPLOAD_FOLDER, project_id,
+                                        excluding_sim=simulation_id):
+                project_id = None
+            else:
+                project = ProjectManager.get_project(project_id)
+                graph_id = getattr(project, 'graph_id', None) if project else None
         report_id = _get_report_id_for_simulation(simulation_id)
 
         def _zep_delete(gid):

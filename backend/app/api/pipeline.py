@@ -54,7 +54,7 @@ def upsert_pipeline():
         default_path(), lambda es: _heal(upsert_entry(es, entry))))
 
 
-def cancel_entry_work(entry, cancel_task, cancel_for_sim, stop_sim):
+def cancel_entry_work(entry, cancel_task, cancel_for_sim, stop_sim, remove_record=None):
     """删除条目 = 零残留：取消其名下所有后台工作。纯函数，依赖注入便于测试。
 
     - buildTaskId：图谱构建线程（协作式取消，下次进度更新即退出）
@@ -76,6 +76,28 @@ def cancel_entry_work(entry, cancel_task, cancel_for_sim, stop_sim):
             stop_sim(entry["simId"])
         except Exception:
             pass
+        # 从未真正运行过的模拟：历史记录一并清掉，否则留下
+        # 「未命名模拟·失败」的幽灵卡片（record 残留）
+        if remove_record is not None:
+            try:
+                remove_record(entry["simId"])
+            except Exception:
+                pass
+
+
+def _remove_never_ran_record(simulation_id):
+    """只清从未跑过一轮的模拟记录；跑过的保留数据。项目/图谱永不在此删。"""
+    import json as _json
+    sims_dir = os.path.join(Config.UPLOAD_FOLDER, 'simulations')
+    rs_path = os.path.join(sims_dir, simulation_id, 'run_state.json')
+    try:
+        with open(rs_path, 'r', encoding='utf-8') as f:
+            if (_json.load(f).get('current_round') or 0) > 0:
+                return                        # 跑过：数据有价值，保留
+    except (OSError, ValueError):
+        pass                                  # 无 run_state = 从未运行
+    from ..utils.history_delete import delete_history_records
+    delete_history_records(Config.UPLOAD_FOLDER, simulation_id)
 
 
 def _stop_sim_if_running(simulation_id):
@@ -94,6 +116,7 @@ def delete_pipeline(tmp_id):
     from ..models.task import TaskManager
     entry = next((e for e in load_entries(default_path()) if e.get("tmpId") == tmp_id), None)
     tm = TaskManager()
-    cancel_entry_work(entry, tm.cancel_task, tm.cancel_tasks_for_simulation, _stop_sim_if_running)
+    cancel_entry_work(entry, tm.cancel_task, tm.cancel_tasks_for_simulation,
+                      _stop_sim_if_running, _remove_never_ran_record)
     return _ok(mutate_entries(
         default_path(), lambda es: _heal(remove_entry(es, tmp_id))))
