@@ -86,6 +86,13 @@ def create_app(config_class=Config):
     from .api.pipeline import pipeline_bp
     app.register_blueprint(pipeline_bp, url_prefix='/api/pipeline')
 
+    # 启动恢复：HF 随时会重启 Space（临时磁盘清空）。数据目录为空时自动
+    # 从备份 Dataset 拉回最新档案——否则无人值守的重启会静默丢掉全部历史。
+    from .services.boot_restore import restore_latest_if_empty
+    restore_latest_if_empty(Config.UPLOAD_FOLDER,
+                            os.environ.get("BACKUP_HF_REPO"),
+                            os.environ.get("HF_TOKEN"))
+
     # 启动清理：重启会杀掉 OASIS 子进程但不会更新 run_state.json，
     # 遗留的 "running" 僵尸记录会让卡片一直显示运行中、驱动器空转。
     from .utils.run_state_reconcile import reconcile_on_start
