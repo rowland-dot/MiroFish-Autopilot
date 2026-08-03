@@ -113,7 +113,10 @@ def reconcile_on_start(run_state_dir: str) -> None:
 # 心跳每 ~2s 覆写一次，10 分钟静默对「已完成」的 run 来说绰绰有余；
 # 中途的 run 单轮 LLM 可能很慢，阈值放到 2 小时避免误杀。
 
-_WEDGE_DONE_SECONDS = 10 * 60
+# 45 分钟：驱动器现在自己负责「轮次跑满 -> 就地报告 -> 主动 stop」。
+# 看门狗只兜底（浏览器死掉没人报告/停止的场景），过早停会杀掉报告期的
+# 活体 interview 能力。
+_WEDGE_DONE_SECONDS = 45 * 60
 _WEDGE_MIDRUN_SECONDS = 2 * 3600
 _WATCHDOG_INTERVAL_SECONDS = 60
 _WATCHDOG_LAST = None

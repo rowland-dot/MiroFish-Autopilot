@@ -133,6 +133,7 @@ export async function runOne(entry, deps, inFlight = new Set()) {
     if (isGone()) return
 
     // run
+    let heldOpen = false
     {
       // Resume guard: a browser refresh re-enters runOne with stored ids.
       // Blindly POSTing start with force:true here RESTARTED an already
@@ -153,8 +154,18 @@ export async function runOne(entry, deps, inFlight = new Set()) {
       let goneStreak = 0
       do {
         if (isGone()) return
-        rs = ((await api.getRunStatus(simId)).data || {}).runner_status
+        const rd = (await api.getRunStatus(simId)).data || {}
+        rs = rd.runner_status
         if (TERMINAL_RUN.includes(rs)) break
+        // 根因（上游持久化设计）：子进程跑完全部轮次后「故意不退出」，
+        // 等待 interview 命令——runner_status 永远停在 running。轮次跑满
+        // 即视为运行结束：趁进程活着先生成报告（interview 工具生效），
+        // 报告完成后再主动 stop 释放槽位。
+        if (rd.total_rounds > 0 && rd.current_round >= rd.total_rounds
+            && rd.twitter_completed === true && rd.reddit_completed === true) {
+          heldOpen = true
+          break
+        }
         let live = []
         try { live = ((await api.getSystemStatus()).data || {}).running_simulations || [] } catch { /* ignore */ }
         const isLive = live.includes(simId) || rs === 'running'
@@ -189,6 +200,10 @@ export async function runOne(entry, deps, inFlight = new Set()) {
           // keep the report id so an observing page can follow through to it
           if (r.report_id) store.patch(id, { reportId: r.report_id })
         } catch (e) { /* report is best-effort */ }
+      }
+      // 持久化子进程：报告完成后主动停掉，否则它永远占着并发槽位
+      if (heldOpen) {
+        try { await api.stopSimulation({ simulation_id: simId }) } catch { /* 看门狗兜底 */ }
       }
       store.setStatus(id, 'done'); signal()
     }

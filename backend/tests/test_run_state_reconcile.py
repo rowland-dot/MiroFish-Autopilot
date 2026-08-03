@@ -127,7 +127,7 @@ def test_watchdog_stops_a_wedged_completed_run(tmp_path):
     from datetime import datetime, timedelta
     from app.utils.run_state_reconcile import find_wedged_runs
     now = datetime(2026, 7, 30, 12, 0, 0)
-    stale = (now - timedelta(minutes=30)).isoformat()
+    stale = (now - timedelta(minutes=60)).isoformat()
     _write_state(tmp_path, "sim_wedged", {
         "runner_status": "running", "current_round": 72, "total_rounds": 72,
         "updated_at": stale,
@@ -164,7 +164,7 @@ def test_watchdog_tick_is_throttled_and_calls_stopper(tmp_path):
     from datetime import datetime, timedelta
     from app.utils import run_state_reconcile as rsr
     now = datetime(2026, 7, 30, 12, 0, 0)
-    stale = (now - timedelta(minutes=30)).isoformat()
+    stale = (now - timedelta(minutes=60)).isoformat()
     _write_state(tmp_path, "sim_wedged", {
         "runner_status": "running", "current_round": 72, "total_rounds": 72,
         "updated_at": stale,

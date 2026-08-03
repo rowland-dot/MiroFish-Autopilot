@@ -259,3 +259,38 @@ test('reused graph still short-circuits without polling', async () => {
   await runOne({ _tmpId: 'z2', file: {}, prompt: 'p' }, deps(api))
   assert.equal(polls, 0, 'reused graph needs no task wait')
 })
+
+// 根因修正：OASIS 子进程在轮次跑完后「故意不退出」，等待 interview 命令
+// （上游持久化设计）。自动流程必须：轮次完成 -> 就地生成报告（进程活着，
+// interview 工具才有效）-> 报告完成后主动 stop 释放槽位。
+test('rounds-complete on a LIVE process: report first (interviews alive), then stop', async () => {
+  const calls = []
+  const api = mockApi(calls)
+  let n = 0
+  api.getRunStatus = async () => {
+    n++
+    return { data: { runner_status: 'running', current_round: 72, total_rounds: 72,
+                     twitter_completed: true, reddit_completed: true } }
+  }
+  api.stopSimulation = async () => { calls.push('stop'); return { data: { runner_status: 'stopped' } } }
+  const d = deps(api)
+  await runOne({ _tmpId: 'h1', file: {}, prompt: 'p', projectId: 'proj_1', graphId: 'g1', realSimId: 'sim_1', status: 'running' }, d)
+  const iReport = calls.indexOf('report')
+  const iStop = calls.indexOf('stop')
+  assert.ok(iReport !== -1, 'report must run')
+  assert.ok(iStop !== -1, 'held-open process must be stopped to free the slot')
+  assert.ok(iReport < iStop, 'report BEFORE stop — interviews need the live process')
+  assert.equal(d._rec.statuses.at(-1), 'done')
+  assert.ok(n < 10, 'must not poll forever waiting for a process that never exits')
+})
+
+test('normal terminal run still reports without needing a stop call', async () => {
+  const calls = []
+  const api = mockApi(calls)
+  api.getRunStatus = async () => ({ data: { runner_status: 'completed', current_round: 72, total_rounds: 72 } })
+  api.stopSimulation = async () => { calls.push('stop'); return { data: {} } }
+  const d = deps(api)
+  await runOne({ _tmpId: 'h2', file: {}, prompt: 'p', projectId: 'proj_1', graphId: 'g1', realSimId: 'sim_1', status: 'running' }, d)
+  assert.ok(calls.includes('report'))
+  assert.ok(!calls.includes('stop'), 'already terminal: no stop needed')
+})
