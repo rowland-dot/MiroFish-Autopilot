@@ -86,6 +86,12 @@ def create_app(config_class=Config):
     from .api.pipeline import pipeline_bp
     app.register_blueprint(pipeline_bp, url_prefix='/api/pipeline')
 
+    # 无头代理接口 + 服务端驱动器：无浏览器也能提交与推进任务
+    from .api.jobs import jobs_bp
+    app.register_blueprint(jobs_bp, url_prefix='/api/jobs')
+    from .services.job_driver import start_job_driver
+    start_job_driver(Config.UPLOAD_FOLDER)
+
     # 启动恢复：HF 随时会重启 Space（临时磁盘清空）。数据目录为空时自动
     # 从备份 Dataset 拉回最新档案——否则无人值守的重启会静默丢掉全部历史。
     from .services.boot_restore import restore_latest_if_empty
