@@ -271,16 +271,6 @@
                 <span class="tl-hint">{{ $t('home.graphVizHint') }}</span>
                 <span v-if="graphVizSaved" class="tl-saved">✓ {{ $t('home.thinkLevelSaved') }}</span>
               </div>
-              <!-- 模型切换（部署级，全队共用）：MiniMax M3 / DeepSeek V4 Pro -->
-              <div class="think-level" style="margin-top:8px;">
-                <span class="tl-label">{{ $t('home.modelLabel') }}</span>
-                <div class="tl-seg">
-                  <button class="tl-opt" :class="{ active: activeModel === 'minimax-m3' }" @click="setModel('minimax-m3')">MiniMax M3</button>
-                  <button class="tl-opt" :class="{ active: activeModel === 'deepseek-v4-pro' }" :disabled="!deepseekAvailable" @click="setModel('deepseek-v4-pro')">DeepSeek V4 Pro</button>
-                </div>
-                <span v-if="!deepseekAvailable" class="tl-hint">{{ $t('home.modelDeepseekUnavailable') }}</span>
-                <span v-if="modelSaved" class="tl-saved">✓ {{ $t('home.thinkLevelSaved') }}</span>
-              </div>
               <!-- 报告采访开关（默认关闭）：报告生成期间与 Agent 实时对话，报告更有现场感但更耗 token -->
               <div class="think-level" style="margin-top:8px;">
                 <span class="tl-label">{{ $t('home.interviewsLabel') }}</span>
@@ -290,6 +280,16 @@
                 </div>
                 <span class="tl-hint">{{ $t('home.interviewsHint') }}</span>
                 <span v-if="interviewsSaved" class="tl-saved">✓ {{ $t('home.thinkLevelSaved') }}</span>
+              </div>
+              <!-- 模型切换（部署级，全队共用）：MiniMax M3 / DeepSeek V4 Pro -->
+              <div class="think-level" style="margin-top:8px;">
+                <span class="tl-label">{{ $t('home.modelLabel') }}</span>
+                <div class="tl-seg">
+                  <button class="tl-opt" :class="{ active: activeModel === 'minimax-m3' }" @click="setModel('minimax-m3')">MiniMax M3</button>
+                  <button class="tl-opt" :class="{ active: activeModel === 'deepseek-v4-pro' }" :disabled="!deepseekAvailable" @click="setModel('deepseek-v4-pro')">DeepSeek V4 Pro</button>
+                </div>
+                <span v-if="!deepseekAvailable" class="tl-hint">{{ $t('home.modelDeepseekUnavailable') }}</span>
+                <span v-if="modelSaved" class="tl-saved">✓ {{ $t('home.thinkLevelSaved') }}</span>
               </div>
             </div>
 
