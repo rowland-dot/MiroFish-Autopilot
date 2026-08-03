@@ -102,7 +102,11 @@
     "queueFullBtn": "队列已满",
     "queueFullSub": "运行 1/1 · 排队 2/2 — 完成后自动空位",
     "manualHintBusy": "：有自动任务进行中，暂不可用。",
-    "autoHintBusy": "：新任务将排队，按顺序自动开始。"
+    "autoHintBusy": "：新任务将排队，按顺序自动开始。",
+    "interviewsLabel": "报告采访",
+    "interviewsOn": "开启",
+    "interviewsOff": "关闭",
+    "interviewsHint": "开启后，报告生成期间会与模拟世界中的 Agent 实时对话（约 10 次推理/份报告），报告更有现场感，token 消耗更高。"
   },
   "autoPilot": {
     "pill": "自动驾驶",

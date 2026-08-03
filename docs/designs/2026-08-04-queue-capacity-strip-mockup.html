@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<title>Section 03 · 自动直达按钮状态化 — 外观与文案选型</title>
+<style>
+  :root {
+    --black:#000; --white:#fff; --orange:#FF4500; --gray-light:#F5F5F5;
+    --gray-text:#666; --border:#E5E5E5;
+    --green:#16A34A; --amber:#D97706; --amber-bg:#FFFBEB;
+    --font-mono:'JetBrains Mono',monospace;
+    --font-sans:'Space Grotesk','Noto Sans SC',system-ui,sans-serif;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{font-family:var(--font-sans);background:#E8E8E8;color:var(--black);padding:32px}
+  h1{font-family:var(--font-mono);font-size:20px;margin-bottom:6px}
+  h2{font-family:var(--font-mono);font-size:14px;background:var(--black);color:var(--white);display:inline-block;padding:5px 12px;margin:26px 0 10px}
+  .note{color:var(--gray-text);font-size:13px;margin-bottom:10px;max-width:900px;line-height:1.7}
+  .row{display:flex;gap:20px;flex-wrap:wrap}
+  .frame{width:460px;background:var(--white);border:1px solid #bbb;box-shadow:0 2px 8px rgba(0,0,0,.08)}
+  .frame-label{font-family:var(--font-mono);font-size:11px;letter-spacing:1px;padding:6px 10px;background:#F5F5F5;border-bottom:1px solid var(--border);color:#444}
+
+  /* ===== 真实 section 03 结构复刻 ===== */
+  .console-section{padding:16px 20px 20px}
+  .sec-no{font-family:var(--font-mono);font-size:11px;color:var(--gray-text);letter-spacing:2px;margin-bottom:12px}
+  .btn-row{display:flex;gap:12px}
+  .start-engine-btn{flex:1;background:var(--black);color:var(--white);border:1px solid var(--black);padding:20px;font-family:var(--font-mono);font-weight:700;font-size:1.05rem;display:flex;justify-content:space-between;align-items:center;cursor:pointer}
+  .start-engine-btn:disabled{background:#E5E5E5;color:#999;border-color:#E5E5E5;cursor:not-allowed}
+  .auto-run-btn{flex:1;border:none;padding:12px 16px;color:var(--white);background:linear-gradient(135deg,#FF5722,#FF8A50);cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px}
+  .auto-main{font-family:var(--font-mono);font-weight:700;font-size:.95rem;letter-spacing:1px;display:flex;align-items:center;gap:8px}
+  .auto-sub{font-size:.66rem;font-weight:500;opacity:.92}
+  .btn-hint{display:flex;gap:12px;margin-top:10px;font-size:.72rem;color:#999;line-height:1.6}
+  .btn-hint .h{flex:1}
+  .btn-hint b{font-family:var(--font-mono)}
+
+  /* ===== 进行中按钮外观 · 方案V1：琥珀描边呼吸 ===== */
+  .v1{background:var(--amber-bg);border:1.5px solid var(--amber);color:#7C2D12}
+  .v1 .auto-sub{opacity:1;color:var(--amber)}
+  .pulse{width:8px;height:8px;border-radius:50%;background:var(--amber);animation:pulse 1.4s infinite}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.2}}
+  /* ===== V2：保留品牌渐变 + 顶部行进条 ===== */
+  .v2{position:relative;overflow:hidden;background:linear-gradient(135deg,#FF5722,#FF8A50)}
+  .v2::before{content:'';position:absolute;top:0;left:0;height:3px;width:40%;background:rgba(255,255,255,.85);animation:slide 1.6s linear infinite}
+  @keyframes slide{0%{left:-40%}100%{left:100%}}
+  /* ===== V3：黑底橙字反转 ===== */
+  .v3{background:var(--black);border:1.5px solid var(--orange);color:var(--orange)}
+  .v3 .auto-sub{opacity:1;color:#FF8A50}
+  /* ===== 队列已满（统一）===== */
+  .vfull{background:#E5E5E5;color:#999;cursor:not-allowed}
+  .vfull .auto-sub{opacity:1;color:#DC2626}
+
+  .copy{background:var(--white);border:1px solid #bbb;padding:12px 16px;max-width:900px;font-size:13px;line-height:2;margin-bottom:6px}
+  .copy b{font-family:var(--font-mono)}
+  .strike{text-decoration:line-through;color:#bbb}
+</style>
+</head>
+<body>
+<h1>Section 03 · 「自动直达」按钮状态化</h1>
+<p class="note">复刻真实 section 03（黑色「启动引擎 →」+ 橙色渐变「⚡自动直达报告」双按钮 + 下方说明行）。已确定：任务进行中时启动引擎禁用；删除「期间可随时退出」。<b>待你决定：①进行中按钮的外观（V1/V2/V3） ②按钮下方说明文案（T1/T2/T3）。</b></p>
+
+<h2>基线 · 空闲状态（外观不变，仅文案删改）</h2>
+<div class="row">
+  <div class="frame">
+    <div class="frame-label">空闲 — 双按钮可用</div>
+    <div class="console-section">
+      <div class="sec-no">03 / LAUNCH</div>
+      <div class="btn-row">
+        <button class="start-engine-btn">启动引擎 <span>→</span></button>
+        <button class="auto-run-btn">
+          <span class="auto-main">⚡ 自动直达报告</span>
+          <span class="auto-sub">全程无人值守 · 1 → 5 步自动推进</span>
+        </button>
+      </div>
+      <div class="btn-hint">
+        <span class="h"><b>启动引擎</b>：与现在完全一致——每步完成后由你点击进入下一步。</span>
+        <span class="h"><b>自动直达报告</b>：使用系统推荐配置自动完成全部步骤，直到报告生成。<span class="strike">；期间可随时退出。</span></span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<h2>决定① · 第二轮 — 克制的状态变化（V1-V3 已废弃）</h2>
+<p class="note">思路修正：应用的语言是极简黑白+单一橙色重音，进行中状态应当是<b>克制的信号</b>，不是换装。三个新方向：</p>
+<div class="row">
+  <div class="frame">
+    <div class="frame-label">V4 · 按钮不变，只换文案 + 白色计数片</div>
+    <div class="console-section">
+      <div class="sec-no">03 / LAUNCH</div>
+      <div class="btn-row">
+        <button class="start-engine-btn" disabled>启动引擎 <span>→</span></button>
+        <button class="auto-run-btn">
+          <span class="auto-main">⚡ 加入队列 <span style="background:rgba(255,255,255,.25);border-radius:2px;padding:1px 7px;font-size:.72rem">1/2</span></span>
+          <span class="auto-sub">任务进行中 · 新任务将排队自动开始</span>
+        </button>
+      </div>
+    </div>
+  </div>
+  <div class="frame">
+    <div class="frame-label">V5 · 幽灵反转 — 渐变退为白底细黑框（模式切换感）</div>
+    <div class="console-section">
+      <div class="sec-no">03 / LAUNCH</div>
+      <div class="btn-row">
+        <button class="start-engine-btn" disabled>启动引擎 <span>→</span></button>
+        <button class="auto-run-btn" style="background:#fff;border:1px solid #000;color:#000">
+          <span class="auto-main">⚡ 加入队列 <span style="color:#FF4500">1/2</span></span>
+          <span class="auto-sub" style="opacity:.55">任务进行中 · 新任务将排队自动开始</span>
+        </button>
+      </div>
+    </div>
+  </div>
+  <div class="frame">
+    <div class="frame-label">V6 · 渐变不变 + 右上角小角标（与卡片徽标同語彙）</div>
+    <div class="console-section">
+      <div class="sec-no">03 / LAUNCH</div>
+      <div class="btn-row">
+        <button class="start-engine-btn" disabled>启动引擎 <span>→</span></button>
+        <button class="auto-run-btn" style="position:relative">
+          <span style="position:absolute;top:0;right:0;background:#fff;color:#FF4500;font-family:var(--font-mono);font-size:9px;font-weight:700;padding:2px 6px;letter-spacing:1px">运行中 1/1</span>
+          <span class="auto-main">⚡ 加入队列</span>
+          <span class="auto-sub">排队 1/2 · 完成后自动开始</span>
+        </button>
+      </div>
+    </div>
+  </div>
+  <div class="frame">
+    <div class="frame-label">队列已满（终态，沿用现有 disabled 灰）</div>
+    <div class="console-section">
+      <div class="sec-no">03 / LAUNCH</div>
+      <div class="btn-row">
+        <button class="start-engine-btn" disabled>启动引擎 <span>→</span></button>
+        <button class="auto-run-btn vfull" disabled>
+          <span class="auto-main">队列已满</span>
+          <span class="auto-sub">运行 1/1 · 排队 2/2 — 完成后自动空位</span>
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<h2>决定② · 已定：T1 ✓</h2>
+<div class="copy"><b>T1 · 极简</b><br>
+<b>启动引擎</b>：有自动任务进行中，暂不可用。&nbsp;&nbsp;<b>加入队列</b>：新任务将排队，按顺序自动开始。</div>
+<div class="copy"><b>T2 · 讲清机制</b><br>
+<b>启动引擎</b>：自动任务运行期间不可手动分步，避免互相干扰。&nbsp;&nbsp;<b>加入队列</b>：最多 1 个运行 + 2 个排队；前面任务完成后自动开始，无需值守。</div>
+<div class="copy"><b>T3 · 带实时水位</b><br>
+<b>当前</b>：运行 1/1 · 排队 1/2。&nbsp;&nbsp;<b>加入队列</b>后你的任务排在第 2 位，预计前方任务完成后自动开始。</div>
+
+</body>
+</html>

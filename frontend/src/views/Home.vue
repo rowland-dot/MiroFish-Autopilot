@@ -281,6 +281,16 @@
                 <span v-if="!deepseekAvailable" class="tl-hint">{{ $t('home.modelDeepseekUnavailable') }}</span>
                 <span v-if="modelSaved" class="tl-saved">✓ {{ $t('home.thinkLevelSaved') }}</span>
               </div>
+              <!-- 报告采访开关（默认关闭）：报告生成期间与 Agent 实时对话，报告更有现场感但更耗 token -->
+              <div class="think-level" style="margin-top:8px;">
+                <span class="tl-label">{{ $t('home.interviewsLabel') }}</span>
+                <div class="tl-seg">
+                  <button class="tl-opt" :class="{ active: !interviewsEnabled }" @click="setInterviews(false)">🚫 {{ $t('home.interviewsOff') }}</button>
+                  <button class="tl-opt" :class="{ active: interviewsEnabled }" @click="setInterviews(true)">🎤 {{ $t('home.interviewsOn') }}</button>
+                </div>
+                <span class="tl-hint">{{ $t('home.interviewsHint') }}</span>
+                <span v-if="interviewsSaved" class="tl-saved">✓ {{ $t('home.thinkLevelSaved') }}</span>
+              </div>
             </div>
 
             <!-- 启动按钮：手动逐步 / 自动直达报告 -->
@@ -465,6 +475,25 @@ const setGraphViz = async (enabled) => {
   }
 }
 
+// 报告采访开关（部署级，默认关闭）
+const interviewsEnabled = ref(false)
+const interviewsSaved = ref(false)
+let interviewsSavedTimer = null
+
+const setInterviews = async (enabled) => {
+  if (enabled === interviewsEnabled.value) return
+  const previous = interviewsEnabled.value
+  interviewsEnabled.value = enabled
+  try {
+    await updateSettings({ interviews_enabled: enabled })
+    interviewsSaved.value = true
+    clearTimeout(interviewsSavedTimer)
+    interviewsSavedTimer = setTimeout(() => { interviewsSaved.value = false }, 2000)
+  } catch {
+    interviewsEnabled.value = previous
+  }
+}
+
 // 模型切换（部署级）：MiniMax M3 / DeepSeek V4 Pro
 const activeModel = ref('minimax-m3')
 const deepseekAvailable = ref(false)
@@ -491,6 +520,7 @@ onMounted(async () => {
     const res = await getSettings()
     if (res.data?.think_level) thinkLevel.value = res.data.think_level
     if (typeof res.data?.graph_viz_enabled === 'boolean') graphVizEnabled.value = res.data.graph_viz_enabled
+    if (typeof res.data?.interviews_enabled === 'boolean') interviewsEnabled.value = res.data.interviews_enabled
     if (res.data?.active_model) activeModel.value = res.data.active_model
     deepseekAvailable.value = !!res.data?.deepseek_available
   } catch {

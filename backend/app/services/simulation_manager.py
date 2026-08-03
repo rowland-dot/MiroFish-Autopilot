@@ -302,6 +302,12 @@ class SimulationManager:
                 enrich_with_edges=True
             )
             
+            # 成本闸门：按连接度保留最重要的 N 个实体作为 Agent
+            # （MAX_SIM_AGENTS，默认 12）——世界规模直接决定每次推理的提示词大小
+            from ..utils.roster_cap import cap_roster
+            filtered.entities = cap_roster(filtered.entities)
+            filtered.filtered_count = len(filtered.entities)
+
             state.entities_count = filtered.filtered_count
             state.entity_types = list(filtered.entity_types)
             
