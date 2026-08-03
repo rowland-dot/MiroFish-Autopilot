@@ -1,20 +1,27 @@
-"""TDD: headless REST surface — spec contracts B1/B2/B3."""
+"""TDD: headless REST surface — spec contracts B1/B2/B3.
+
+Isolation follows test_pipeline_api.py: patch pipeline_state._DEFAULT_PATH and
+Config.UPLOAD_FOLDER at tmp_path, and mount only the jobs blueprint — the tests
+must never read or write the live pipeline state.
+"""
 import io
 
 import pytest
+from flask import Flask
 
-from app import create_app
+from app.api.jobs import jobs_bp
+from app.config import Config
+from app.utils import pipeline_state as ps
 
 
 @pytest.fixture()
 def client(tmp_path, monkeypatch):
-    monkeypatch.setenv("UPLOAD_FOLDER", str(tmp_path))
-    from app.config import Config
+    monkeypatch.setattr(ps, "_DEFAULT_PATH", str(tmp_path / "pipeline_state.json"))
     monkeypatch.setattr(Config, "UPLOAD_FOLDER", str(tmp_path))
-    app = create_app()
+    app = Flask(__name__)
+    app.register_blueprint(jobs_bp, url_prefix="/api/jobs")
     app.config["TESTING"] = True
-    with app.test_client() as c:
-        yield c
+    return app.test_client()
 
 
 def _submit(client, prompt="预测舆情", name="r.docx"):
@@ -30,10 +37,26 @@ def test_submit_returns_job_id_and_queued(client):
     assert body["status"] == "queued"
 
 
+def test_submit_persists_the_uploaded_bytes_for_the_driver(client, tmp_path):
+    jid = _submit(client).get_json()["data"]["job_id"]
+    saved = tmp_path / "agent_uploads" / f"{jid}.bin"
+    assert saved.exists()
+    assert saved.read_bytes() == b"doc bytes"
+
+
 def test_submit_requires_file_and_prompt(client):
     res = client.post("/api/jobs", data={"prompt": "x"},
                       content_type="multipart/form-data")
     assert res.status_code == 400
+
+
+def test_submit_rejected_when_queue_is_full(client):
+    # 1 运行 + 2 排队 = 满；容量与浏览器任务共享
+    for _ in range(3):
+        assert _submit(client).status_code == 200
+    res = _submit(client)
+    assert res.status_code == 429
+    assert res.get_json()["data"]["error"] == "queue full"
 
 
 def test_status_of_unknown_job_is_404(client):

@@ -42,5 +42,11 @@ def capacity_state(entries: list) -> tuple:
 
 
 def is_full(entries: list) -> bool:
+    """容量按「占位总数」判定，而不是「1 运行 且 2 排队」。
+
+    浏览器提交时首个条目立刻转为活跃，所以两种写法等价；代理任务全部以
+    queued 落库、由驱动器提升，若沿用「且」的写法闸门永远不触发，可以无限
+    堆积任务。
+    """
     running, queued = capacity_state(entries)
-    return running >= SLOT_LIMIT and queued >= QUEUE_LIMIT
+    return running + queued >= SLOT_LIMIT + QUEUE_LIMIT

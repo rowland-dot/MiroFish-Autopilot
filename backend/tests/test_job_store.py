@@ -42,3 +42,11 @@ def test_full_at_one_running_plus_two_queued():
     ]
     assert capacity_state(entries) == (1, 2)
     assert is_full(entries) is True
+
+
+def test_full_when_three_are_queued_and_none_running():
+    # 代理任务全部以 queued 落库（驱动器负责提升）——闸门必须照样触发，
+    # 否则可以无限堆积任务
+    entries = [{"tmpId": x, "status": "queued"} for x in ("a", "b", "c")]
+    assert capacity_state(entries) == (0, 3)
+    assert is_full(entries) is True
