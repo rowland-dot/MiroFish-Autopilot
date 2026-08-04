@@ -20,6 +20,8 @@ PREPARED = ("completed", "ready")
 # 永久占死，饿死整个队列。
 REPORT_POLL_MAX = 90
 REPORT_POLL_SECONDS = 30
+# 报告记录落盘前的宽限次数：连续这么多次读不到才算真失败
+REPORT_READ_MISS_MAX = 5
 
 
 def advance(entry: dict, http, sleep, file_bytes: bytes,
@@ -150,10 +152,20 @@ def advance(entry: dict, http, sleep, file_bytes: bytes,
             })
             _save(reportId=r.get("report_id"))
             if e["reportId"]:
+                # generate 返回 id 后记录要过一会儿才落盘：前几次轮询可能 404。
+                # 把它当致命错误会把一个正在正常生成报告的任务标记为失败。
+                misses = 0
                 for _ in range(REPORT_POLL_MAX):
                     if gone():
                         return _abandon()
-                    st = http.get(f"/api/report/{e['reportId']}").get("status")
+                    try:
+                        st = http.get(f"/api/report/{e['reportId']}").get("status")
+                        misses = 0
+                    except Exception as read_err:  # noqa: BLE001
+                        misses += 1
+                        if misses > REPORT_READ_MISS_MAX:
+                            raise
+                        st = None
                     if st in ("completed", "failed"):
                         break
                     sleep(REPORT_POLL_SECONDS)

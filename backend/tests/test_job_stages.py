@@ -267,3 +267,40 @@ def test_terminal_run_is_never_restarted_on_resume():
         advance(_entry(projectId="p", graphId="g", simId="s"),
                 http, sleep=lambda s: None, file_bytes=b"x")
         assert "start" not in http.calls, f"{st} must not be restarted"
+
+
+def test_transient_404_while_the_report_record_settles_is_not_fatal():
+    # /report/generate 返回 report_id 后，记录要过一会儿才落盘：首次轮询可能
+    # 404。把它当致命错误会把一个正在正常生成报告的任务标记为失败。
+    http = FakeHttp(run_seq=["completed"])
+    orig_get = http.get
+    polls = {"n": 0}
+
+    def get(path):
+        if "/report/" in path and "/graph/" not in path:
+            polls["n"] += 1
+            if polls["n"] <= 2:
+                raise RuntimeError("404 Client Error: NOT FOUND for url: /api/report/x")
+            return {"status": "completed"}
+        return orig_get(path)
+
+    http.get = get
+    out = advance(_entry(projectId="p", graphId="g", simId="s"),
+                  http, sleep=lambda s: None, file_bytes=b"x")
+    assert out["status"] == "done"
+    assert polls["n"] >= 3
+
+
+def test_persistent_report_read_failure_still_fails_the_job():
+    http = FakeHttp(run_seq=["completed"])
+    orig_get = http.get
+
+    def get(path):
+        if "/report/" in path and "/graph/" not in path:
+            raise RuntimeError("500 Server Error")
+        return orig_get(path)
+
+    http.get = get
+    out = advance(_entry(projectId="p", graphId="g", simId="s"),
+                  http, sleep=lambda s: None, file_bytes=b"x")
+    assert out["status"] == "failed"
