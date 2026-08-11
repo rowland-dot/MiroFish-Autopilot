@@ -22,6 +22,7 @@ from ..config import Config
 from ..utils.llm_client import LLMClient
 from ..utils.logger import get_logger
 from ..utils.locale import get_language_instruction, t
+from ..utils.tool_call_guard import has_tool_call_markup, strip_tool_call_blocks
 from .zep_tools import (
     ZepToolsService, 
     SearchResult, 
@@ -830,6 +831,17 @@ REACT_UNUSED_TOOLS_HINT = "\n💡 你还没有使用过: {unused_list}，建议�
 
 REACT_FORCE_FINAL_MSG = "已达到工具调用限制，请直接输出 Final Answer: 并生成章节内容。"
 
+# 上一条回复里有 <tool_call> 但 JSON 不合法（常见于被 max_tokens 截断、
+# 或参数里带 emoji/斜杠导致收尾写坏）。退回重写，绝不让它变成章节正文。
+REACT_MALFORMED_TOOL_CALL_MSG = (
+    "【格式错误】你的上一条回复包含 <tool_call> 块，但其中的 JSON 不合法，无法解析。\n"
+    "请重新回复，只做以下两件事之一：\n"
+    "- 调用一个工具：输出一个完整合法的 <tool_call> 块，形如 "
+    "{\"name\": \"工具名\", \"parameters\": {\"query\": \"简短问题\"}}，"
+    "务必闭合所有花括号，参数请写短（不要超过 30 字，避免使用 emoji）。\n"
+    "- 输出最终内容：以 'Final Answer:' 开头，正文中不要出现 <tool_call>。"
+)
+
 # ── Chat prompt ──
 
 CHAT_SYSTEM_PROMPT_TEMPLATE = """\
@@ -1093,7 +1105,11 @@ class ReportAgent:
                 call_data = json.loads(match.group(1))
                 tool_calls.append(call_data)
             except json.JSONDecodeError:
-                pass
+                # 静默失败会让畸形调用一路漏进章节正文，必须留痕
+                logger.warning(
+                    "工具调用 JSON 解析失败（畸形或被截断），原始片段: %s",
+                    match.group(1)[:300]
+                )
 
         if tool_calls:
             return tool_calls
@@ -1535,10 +1551,24 @@ class ReportAgent:
                 })
                 continue
 
+            # 正文里残留 <tool_call>：LLM 想调工具，只是 JSON 写坏了（解析器
+            # 静默失败）。这种响应绝不能当最终答案——否则标签原样写进成品报告。
+            # 退回本次响应并给出格式纠正，继续下一轮迭代。
+            if has_tool_call_markup(cleaned_response):
+                logger.warning(
+                    "章节 %s：响应含畸形 <tool_call>，退回要求重写（不作为正文）",
+                    section.title
+                )
+                messages.append({
+                    "role": "user",
+                    "content": REACT_MALFORMED_TOOL_CALL_MSG,
+                })
+                continue
+
             # 工具调用已足够，LLM 输出了内容但没带 "Final Answer:" 前缀
             # 直接将这段内容作为最终答案，不再空转
             logger.info(t('report.sectionNoPrefix', title=section.title, count=tool_calls_count))
-            final_answer = cleaned_response
+            final_answer = strip_tool_call_blocks(cleaned_response)
 
             if self.report_logger:
                 self.report_logger.log_section_content(
@@ -1564,9 +1594,10 @@ class ReportAgent:
             logger.error(t('report.sectionForceFailed', title=section.title))
             final_answer = t('report.sectionGenFailedContent')
         elif "Final Answer:" in response:
-            final_answer = response.split("Final Answer:")[-1].strip()
+            final_answer = strip_tool_call_blocks(response.split("Final Answer:")[-1].strip())
         else:
-            final_answer = response
+            # 迭代耗尽：宁可交出 LLM 写的内容（哪怕不完整），也不能交出工具调用标记
+            final_answer = strip_tool_call_blocks(response)
         
         # 记录章节内容生成完成日志
         if self.report_logger:
