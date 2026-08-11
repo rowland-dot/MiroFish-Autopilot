@@ -34,8 +34,14 @@ def parse_args(argv):
     t.add_argument("job_id")
 
     r = sub.add_parser("report", help="fetch a finished report")
-    r.add_argument("job_id")
+    # job_id 在任务 done 后会被服务端清理（卡片被历史记录取代），
+    # 所以同时支持用 status 里返回的 report_id 直取——那条路是稳定的
+    r.add_argument("job_id", nargs="?")
+    r.add_argument("--report-id", dest="report_id")
     r.add_argument("-o", "--output")
+
+    d = sub.add_parser("delete", help="delete a job's card from the server")
+    d.add_argument("job_id")
 
     return p.parse_args(argv)
 
@@ -82,6 +88,12 @@ class Client:
         except urllib.error.HTTPError as e:
             return e.code, e.read()
 
+    def delete(self, path):
+        try:
+            return self._request(path, method="DELETE")
+        except urllib.error.HTTPError as e:
+            return e.code, e.read()
+
     def post_file(self, path, file_path, fields):
         boundary = uuid.uuid4().hex
         name = os.path.basename(file_path)
@@ -120,7 +132,20 @@ def main(argv=None):
         print(json.dumps(body.get("data", body), ensure_ascii=False))
         return 0 if status == 200 else 1
 
-    status, raw = c.get_raw(f"/api/jobs/{ns.job_id}/report")
+    if ns.command == "delete":
+        status, raw = c.delete(f"/api/pipeline/{ns.job_id}")
+        print(json.dumps({"job_id": ns.job_id, "deleted": status == 200},
+                         ensure_ascii=False))
+        return 0 if status == 200 else 1
+
+    if ns.report_id:
+        # 直取报告：绕开已被清理的任务卡片
+        status, raw = c.get_raw(f"/api/report/{ns.report_id}/download?format=md")
+    elif ns.job_id:
+        status, raw = c.get_raw(f"/api/jobs/{ns.job_id}/report")
+    else:
+        print(json.dumps({"error": "report needs a job_id or --report-id"}))
+        return 2
     if status != 200:
         print(raw.decode("utf-8", "replace"))
         return 1
