@@ -15,7 +15,10 @@ import re
 from ..utils.backup import restore_from_bytes
 from ..utils.logger import logger
 
-_BACKUP_RE = re.compile(r"^mirofish-backup-\d{8}-\d{6}\.tar\.gz$")
+# 认调度器真实上传的名字（backups/mirofish-<ts>.tar.gz）以及部署脚本的
+# 旧命名（mirofish-backup-<ts>.tar.gz）。时间戳在文件名里，按它排序而不是
+# 按整条路径——否则不同目录会把顺序打乱。
+_BACKUP_RE = re.compile(r"mirofish-(?:backup-)?(\d{8}-\d{6})\.tar\.gz$")
 
 
 def _has_data(data_dir: str) -> bool:
@@ -27,9 +30,13 @@ def _has_data(data_dir: str) -> bool:
 
 
 def pick_newest(filenames) -> str:
-    """时间戳在文件名里，字典序即时间序。非备份文件忽略。"""
-    hits = sorted(f for f in (filenames or []) if _BACKUP_RE.match(f))
-    return hits[-1] if hits else None
+    """按文件名里的时间戳选最新；非备份文件忽略。"""
+    hits = []
+    for f in (filenames or []):
+        m = _BACKUP_RE.search(f or "")
+        if m:
+            hits.append((m.group(1), f))
+    return max(hits)[1] if hits else None
 
 
 def _hf_list(repo: str, token: str):
@@ -54,6 +61,9 @@ def restore_latest_if_empty(data_dir: str, repo: str, token: str,
             return False               # 有数据绝不覆盖
         newest = pick_newest(lister(repo, token))
         if not newest:
+            # 静默返回 False 曾让「命名不匹配」的失效状态潜伏了 11 天，
+            # 直到一次 HF 重启把数据清空才暴露。必须留痕。
+            logger.error(f"启动恢复：数据目录为空，但备份库 {repo} 里没有可用备份")
             return False
         archive = downloader(repo, token, newest)
         if not archive:
