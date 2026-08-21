@@ -67,3 +67,32 @@ def test_download_failure_never_raises(tmp_path):
     def boom(*a): raise RuntimeError("hf down")
     assert restore_latest_if_empty(str(dst), repo="r", token="t",
                                    lister=boom, downloader=boom) is False
+
+
+def test_pick_newest_matches_the_scheduler_actual_filenames():
+    # 真实事故（2026-08-14）：调度器上传 backups/mirofish-<ts>.tar.gz，
+    # 而这里只认 mirofish-backup-<ts>.tar.gz —— 永不匹配，自动恢复形同虚设。
+    files = [
+        "backups/mirofish-20260812-073158.tar.gz",
+        "backups/mirofish-20260814-073245.tar.gz",
+        "backups/mirofish-20260813-073222.tar.gz",
+        ".gitattributes",
+        "README.md",
+    ]
+    assert pick_newest(files) == "backups/mirofish-20260814-073245.tar.gz"
+
+
+def test_pick_newest_still_matches_the_legacy_deploy_naming():
+    files = ["mirofish-backup-20260805-005856.tar.gz",
+             "mirofish-backup-20260812-032609.tar.gz"]
+    assert pick_newest(files) == "mirofish-backup-20260812-032609.tar.gz"
+
+
+def test_pick_newest_orders_by_timestamp_not_path():
+    files = ["zz/mirofish-20260101-000000.tar.gz",
+             "aa/mirofish-20260814-073245.tar.gz"]
+    assert pick_newest(files) == "aa/mirofish-20260814-073245.tar.gz"
+
+
+def test_pick_newest_ignores_non_backups():
+    assert pick_newest(["README.md", "backups/notes.txt"]) is None
