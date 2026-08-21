@@ -32,6 +32,7 @@
         <!-- 状态徽标（右上角）：运行中 / 生成中 / 排队中 -->
         <span v-if="isCardFailed(project)" class="card-failed-badge">{{ $t('history.failed') }}</span>
         <span v-else-if="isCardRunning(project)" class="card-run-badge">{{ $t('history.running') }}</span>
+        <span v-else-if="isCardReporting(project)" class="card-gen-badge">{{ $t('history.reporting') }}</span>
         <span v-else-if="isCardGenerating(project)" class="card-gen-badge">{{ $t('history.generating') }}</span>
         <span v-else-if="isCardQueued(project)" class="card-queued-badge">{{ $t('history.queued') }}</span>
         <!-- 永久删除按钮（悬停显示，阻止冒泡以免打开项目） -->
@@ -102,6 +103,9 @@
           </span>
           <span v-else-if="isCardQueued(project)" class="card-progress queued">
             <span class="status-dot">●</span> {{ $t('history.waiting') }}
+          </span>
+          <span v-else-if="isCardReporting(project)" class="card-progress generating">
+            <span class="status-dot">●</span> {{ $t('history.reporting') }}
           </span>
           <span v-else-if="isCardGenerating(project)" class="card-progress generating">
             <span class="status-dot">●</span> {{ $t('history.generating') }}
@@ -269,7 +273,10 @@ const queuedIds = ref([])
 const runningIds = ref([])
 let queuePollTimer = null
 
-const GEN_STATUSES = ['ontology', 'building', 'creating', 'preparing', 'reporting']
+// 报告生成单独成一档：它跟在 72 轮跑完之后，跟「准备中」是完全不同的阶段。
+// 混在一起显示会让一个正常写报告的任务看起来卡在准备阶段好几个小时。
+const GEN_STATUSES = ['ontology', 'building', 'creating', 'preparing']
+const REPORTING_STATUS = 'reporting'
 // 已跑满轮次 = 完成（即使 OASIS 环境仍被挂起，/api/status 仍会把它列为 running）。
 // 卡片按「实际进度」判定运行中，而非「进程是否存活」，否则完成后仍误报运行中。
 const isRecordComplete = (project) => {
@@ -296,13 +303,14 @@ const isCardRunning = (project) =>
     : (pipelineStage(project) === 'running'
         || (isQueued(project.simulation_id, runningIds.value) && !isRecordComplete(project)))
 const isCardGenerating = (project) => GEN_STATUSES.includes(pipelineStage(project))
+const isCardReporting = (project) => pipelineStage(project) === REPORTING_STATUS
 const isCardFailed = (project) => pipelineStage(project) === 'failed'
 // 卡片边框样式与徽标同一优先级、互斥——两个独立轮询的列表在过渡瞬间可能
 // 同时为真（queued+running），独立绑定会出现「红框配运行中徽标」的自相矛盾
 const cardStageClass = (project) => {
   if (isCardFailed(project)) return 'failed'
   if (isCardRunning(project)) return 'running'
-  if (isCardGenerating(project)) return 'generating'
+  if (isCardReporting(project) || isCardGenerating(project)) return 'generating'
   if (isCardQueued(project)) return 'queued'
   return ''
 }

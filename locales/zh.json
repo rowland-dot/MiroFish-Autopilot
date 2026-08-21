@@ -384,7 +384,8 @@
     "stagePreparing": "正在搭建环境…",
     "stageRunning": "推演运行中…",
     "stageReporting": "正在生成报告…",
-    "stageWaitHint": "项目创建完成后将自动进入实时页面。"
+    "stageWaitHint": "项目创建完成后将自动进入实时页面。",
+    "reporting": "报告生成中"
   },
   "api": {
     "projectNotFound": "项目不存在: {id}",

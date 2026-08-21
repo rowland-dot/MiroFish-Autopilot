@@ -384,7 +384,8 @@
     "stagePreparing": "Setting up environment…",
     "stageRunning": "Simulation running…",
     "stageReporting": "Generating report…",
-    "stageWaitHint": "You'll be taken into the live view as soon as the project is created."
+    "stageWaitHint": "You'll be taken into the live view as soon as the project is created.",
+    "reporting": "Writing report"
   },
   "api": {
     "projectNotFound": "Project not found: {id}",
